@@ -1,0 +1,25 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy web application requirements
+COPY src/api_server/requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the web application code
+COPY src/api_server /app/src/api_server
+COPY src/hrv_analyzer /app/src/hrv_analyzer
+COPY src/stimulation_controller /app/src/stimulation_controller
+
+# Expose port for web interface
+EXPOSE 8080
+
+# Set the entrypoint
+CMD ["python", "src/api_server/app.py"]
