@@ -1,0 +1,51 @@
+version: '3'
+
+services:
+  # Main simulation service (headless mode)
+  simulation:
+    build: .
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["--headless"]
+    restart: unless-stopped
+    networks:
+      - anxiety-prevention-network
+    depends_on:
+      - db
+
+  # Database for storing simulation results
+  db:
+    image: mongo:latest
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    restart: unless-stopped
+    networks:
+      - anxiety-prevention-network
+
+  # Web interface for monitoring the simulation
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "8080:8080"
+    environment:
+      - SIMULATION_HOST=simulation
+      - MONGO_HOST=db
+      - MONGO_PORT=27017
+    networks:
+      - anxiety-prevention-network
+    depends_on:
+      - simulation
+      - db
+
+networks:
+  anxiety-prevention-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
