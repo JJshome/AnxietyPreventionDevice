@@ -1,51 +1,74 @@
-version: '3'
+version: '3.8'
 
 services:
-  # Main simulation service (headless mode)
-  simulation:
-    build: .
+  # 메인 애플리케이션 서비스
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: anxiety-prevention-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
     volumes:
       - ./data:/app/data
+      - ./results:/app/results
+      - ./config:/app/config
     environment:
-      - PYTHONUNBUFFERED=1
-    command: ["--headless"]
-    restart: unless-stopped
-    networks:
-      - anxiety-prevention-network
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - SIMULATION_MODE=${SIMULATION_MODE:-false}
+      - BLUETOOTH_ENABLED=${BLUETOOTH_ENABLED:-true}
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"  # 시리얼 포트 (필요한 경우)
+    privileged: true  # 블루투스 액세스를 위해 필요 (보안 주의)
+    network_mode: host  # 블루투스 통신을 위해 호스트 네트워크 모드 사용
     depends_on:
       - db
-
-  # Database for storing simulation results
-  db:
-    image: mongo:latest
-    volumes:
-      - mongodb_data:/data/db
-    ports:
-      - "27017:27017"
-    restart: unless-stopped
-    networks:
-      - anxiety-prevention-network
-
-  # Web interface for monitoring the simulation
+      
+  # 웹 대시보드 서비스
   web:
     build:
       context: .
       dockerfile: Dockerfile.web
+    container_name: anxiety-prevention-web
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "80:80"
     environment:
-      - SIMULATION_HOST=simulation
-      - MONGO_HOST=db
-      - MONGO_PORT=27017
-    networks:
-      - anxiety-prevention-network
+      - API_URL=http://app:8080
     depends_on:
-      - simulation
-      - db
-
-networks:
-  anxiety-prevention-network:
-    driver: bridge
-
+      - app
+      
+  # 데이터베이스 서비스 (MongoDB)
+  db:
+    image: mongo:5.0
+    container_name: anxiety-prevention-db
+    restart: unless-stopped
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=anxiety_prevention
+    ports:
+      - "27017:27017"
+      
+  # 개발 환경용 시뮬레이션 서비스 (선택적 실행)
+  simulation:
+    build:
+      context: .
+      dockerfile: Dockerfile.simulation
+    container_name: anxiety-prevention-simulation
+    profiles: ["dev"]  # 개발 환경에서만 실행 (docker-compose --profile dev up)
+    restart: "no"
+    volumes:
+      - ./data:/app/data
+      - ./simulation:/app/simulation
+      - ./results:/app/results
+    environment:
+      - DISPLAY=${DISPLAY}
+      - HEADLESS=${HEADLESS:-false}
+    network_mode: host  # GUI 액세스를 위해
+    command: python simulation/run_simulation.py
+      
 volumes:
   mongodb_data:
