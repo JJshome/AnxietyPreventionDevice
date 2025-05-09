@@ -1,405 +1,437 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 ECG 신호 시뮬레이터
 
-실제 심전도 센서 없이 다양한 ECG 신호를 생성하여 시뮬레이션하는 모듈입니다.
-불안장애 시나리오를 시뮬레이트하기 위한 다양한 심박 변화를 생성할 수 있습니다.
+웨어러블 심전도 센서의 ECG 신호를 시뮬레이션하는 모듈입니다.
+실제 ECG 데이터 세트를 기반으로 다양한 심박 패턴을 생성합니다.
 """
 
 import numpy as np
-import time
+import matplotlib.pyplot as plt
+from scipy import signal
 import threading
+import time
 import logging
-from queue import Queue
+import os
+import random
+from enum import Enum
 
-# 로깅 설정
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("ECGSimulator")
+logger = logging.getLogger(__name__)
+
+
+class ECGPatternType(Enum):
+    """ECG 패턴 유형"""
+    NORMAL = "normal"               # 정상 심박 패턴
+    ELEVATED_HR = "elevated_hr"     # 높은 심박수
+    REDUCED_HRV = "reduced_hrv"     # 감소된 심박변이도
+    ANXIETY = "anxiety"             # 불안 상태 패턴
+    ARRHYTHMIA = "arrhythmia"       # 부정맥 패턴
 
 
 class ECGSimulator:
     """
-    ECG 신호 시뮬레이터 클래스
+    웨어러블 ECG 센서의 심전도 신호를 시뮬레이션하는 클래스
     """
     
-    # 심장 상태 상수
-    STATE_NORMAL = "normal"          # 정상 상태
-    STATE_STRESS = "stress"          # 스트레스 상태
-    STATE_ANXIETY = "anxiety"        # 불안 상태
-    STATE_RELAXED = "relaxed"        # 편안 상태
-    
-    def __init__(self, sampling_rate=256):
+    def __init__(self, sampling_rate=256, noise_level=0.1):
         """
-        초기화
+        ECGSimulator 초기화
         
-        Args:
-            sampling_rate (int): 샘플링 속도 (Hz)
+        매개변수:
+            sampling_rate (int): 샘플링 레이트 (Hz)
+            noise_level (float): 노이즈 레벨 (0-1)
         """
         self.sampling_rate = sampling_rate
-        self.data_queue = Queue(maxsize=100)
+        self.noise_level = noise_level
         
-        # 심장 상태 관련 변수
-        self.heart_rate = 60  # 기본 심박수 (bpm)
-        self.heart_rate_variability = 5  # 심박 변동성 (정상상태)
-        self.current_state = self.STATE_NORMAL
-        self.state_transition = None  # 상태 전환 정보 (시작 시간, 지속 시간, 대상 상태)
+        # 기본 ECG 템플릿 로드
+        self.templates = self._load_templates()
         
-        # 시뮬레이션 실행 상태
+        # 시뮬레이션 상태 변수
         self.running = False
         self.simulation_thread = None
+        self.listeners = []
         
-        # 콜백 함수
-        self.callback = None
+        # 현재 패턴 설정
+        self.current_pattern = ECGPatternType.NORMAL
+        self.current_heart_rate = 70  # bpm
+        self.heart_rate_variability = 0.1  # 심박 변이 수준 (0-1)
         
-        logger.info(f"ECG 시뮬레이터 초기화 (샘플링 속도: {sampling_rate}Hz)")
+        # 생성된 데이터 저장
+        self.generated_data = []
+        self.timestamps = []
+        
+        logger.info("ECG 시뮬레이터가 초기화되었습니다.")
     
-    def start_simulation(self):
+    def _load_templates(self):
         """
-        ECG 신호 시뮬레이션 시작
+        ECG 신호 템플릿을 로드합니다.
+        실제 구현에서는 파일에서 로드하거나 더 정교한 모델을 사용할 수 있습니다.
         
-        Returns:
-            bool: 시작 성공 여부
+        반환값:
+            dict: 패턴 유형별 ECG 템플릿
+        """
+        # 간단한 ECG PQRST 파형 생성
+        def generate_pqrst(duration=0.8, sampling_rate=256):
+            """
+            PQRST 파형을 생성합니다.
+            
+            매개변수:
+                duration (float): 파형 지속 시간 (초)
+                sampling_rate (int): 샘플링 레이트 (Hz)
+                
+            반환값:
+                ndarray: PQRST 파형
+            """
+            t = np.arange(0, duration, 1.0/sampling_rate)
+            n_samples = len(t)
+            
+            # 가우시안 함수를 사용한 파형 생성
+            p_wave = -0.2 * np.exp(-((t - 0.1)**2) / 0.005)
+            q_wave = -0.5 * np.exp(-((t - 0.2)**2) / 0.002)
+            r_wave = 3.0 * np.exp(-((t - 0.25)**2) / 0.001)
+            s_wave = -0.7 * np.exp(-((t - 0.3)**2) / 0.002)
+            t_wave = 0.5 * np.exp(-((t - 0.5)**2) / 0.01)
+            
+            # 파형 합성
+            pqrst = p_wave + q_wave + r_wave + s_wave + t_wave
+            
+            # 기준선 조정
+            baseline = np.zeros_like(pqrst)
+            ecg_wave = pqrst + baseline
+            
+            return ecg_wave
+        
+        # 다양한 패턴에 대한 템플릿 생성
+        templates = {}
+        
+        # 정상 패턴
+        templates[ECGPatternType.NORMAL] = generate_pqrst(
+            duration=0.8, sampling_rate=self.sampling_rate
+        )
+        
+        # 높은 심박수 패턴 (더 짧은 주기)
+        templates[ECGPatternType.ELEVATED_HR] = generate_pqrst(
+            duration=0.6, sampling_rate=self.sampling_rate
+        )
+        
+        # 불안 패턴 (더 높은 R파, 더 짧은 주기)
+        anxiety_t = np.arange(0, 0.6, 1.0/self.sampling_rate)
+        p_wave = -0.2 * np.exp(-((anxiety_t - 0.1)**2) / 0.004)
+        q_wave = -0.6 * np.exp(-((anxiety_t - 0.2)**2) / 0.001)
+        r_wave = 3.5 * np.exp(-((anxiety_t - 0.25)**2) / 0.0008)  # 더 높은 R파
+        s_wave = -0.9 * np.exp(-((anxiety_t - 0.3)**2) / 0.001)
+        t_wave = 0.4 * np.exp(-((anxiety_t - 0.45)**2) / 0.008)
+        templates[ECGPatternType.ANXIETY] = (
+            p_wave + q_wave + r_wave + s_wave + t_wave
+        )
+        
+        # 부정맥 패턴 (불규칙한 R파 높이와 간격)
+        arrhythmia_t = np.arange(0, 0.9, 1.0/self.sampling_rate)
+        p_wave = -0.15 * np.exp(-((arrhythmia_t - 0.12)**2) / 0.006)
+        q_wave = -0.4 * np.exp(-((arrhythmia_t - 0.22)**2) / 0.003)
+        r_wave = 2.7 * np.exp(-((arrhythmia_t - 0.28)**2) / 0.0015)
+        s_wave = -0.6 * np.exp(-((arrhythmia_t - 0.34)**2) / 0.003)
+        t_wave = 0.4 * np.exp(-((arrhythmia_t - 0.6)**2) / 0.015)
+        templates[ECGPatternType.ARRHYTHMIA] = (
+            p_wave + q_wave + r_wave + s_wave + t_wave
+        )
+        
+        # 감소된 HRV 패턴 (정상 템플릿과 동일하나 생성 시 심박 간격 변이가 줄어듬)
+        templates[ECGPatternType.REDUCED_HRV] = templates[ECGPatternType.NORMAL]
+        
+        return templates
+    
+    def add_listener(self, callback):
+        """
+        ECG 데이터 리스너를 추가합니다.
+        
+        매개변수:
+            callback (function): ECG 데이터가 생성될 때마다 호출될 콜백 함수
+        """
+        if callback not in self.listeners:
+            self.listeners.append(callback)
+            logger.info("ECG 데이터 리스너가 추가되었습니다.")
+    
+    def remove_listener(self, callback):
+        """
+        ECG 데이터 리스너를 제거합니다.
+        
+        매개변수:
+            callback (function): 제거할 콜백 함수
+        """
+        if callback in self.listeners:
+            self.listeners.remove(callback)
+            logger.info("ECG 데이터 리스너가 제거되었습니다.")
+    
+    def set_pattern(self, pattern_type, heart_rate=None, hrv_level=None):
+        """
+        ECG 패턴을 설정합니다.
+        
+        매개변수:
+            pattern_type (ECGPatternType): 패턴 유형
+            heart_rate (int, optional): 심박수 (bpm)
+            hrv_level (float, optional): 심박변이도 수준 (0-1)
+        """
+        if isinstance(pattern_type, str):
+            try:
+                pattern_type = ECGPatternType(pattern_type)
+            except ValueError:
+                logger.error(f"유효하지 않은 패턴 유형: {pattern_type}")
+                return
+        
+        self.current_pattern = pattern_type
+        
+        # 패턴에 따른 기본값 설정
+        if heart_rate is None:
+            if pattern_type == ECGPatternType.NORMAL:
+                heart_rate = 70
+            elif pattern_type == ECGPatternType.ELEVATED_HR:
+                heart_rate = 100
+            elif pattern_type == ECGPatternType.ANXIETY:
+                heart_rate = 95
+            elif pattern_type == ECGPatternType.ARRHYTHMIA:
+                heart_rate = 80
+            elif pattern_type == ECGPatternType.REDUCED_HRV:
+                heart_rate = 75
+        
+        if hrv_level is None:
+            if pattern_type == ECGPatternType.NORMAL:
+                hrv_level = 0.1
+            elif pattern_type == ECGPatternType.ELEVATED_HR:
+                hrv_level = 0.08
+            elif pattern_type == ECGPatternType.ANXIETY:
+                hrv_level = 0.05
+            elif pattern_type == ECGPatternType.ARRHYTHMIA:
+                hrv_level = 0.25
+            elif pattern_type == ECGPatternType.REDUCED_HRV:
+                hrv_level = 0.02
+        
+        self.current_heart_rate = heart_rate
+        self.heart_rate_variability = hrv_level
+        
+        logger.info(f"ECG 패턴이 설정되었습니다: {pattern_type.value}, HR={heart_rate}bpm, HRV={hrv_level}")
+    
+    def start(self):
+        """
+        ECG 시뮬레이션을 시작합니다.
         """
         if self.running:
-            logger.warning("이미 시뮬레이션이 실행 중입니다.")
-            return True
+            logger.warning("시뮬레이션이 이미 실행 중입니다.")
+            return
         
-        # 큐 초기화
-        with self.data_queue.mutex:
-            self.data_queue.queue.clear()
-        
-        # 식시뮬레이션 스레드 시작
         self.running = True
+        self.generated_data = []
+        self.timestamps = []
+        
         self.simulation_thread = threading.Thread(target=self._simulation_worker)
         self.simulation_thread.daemon = True
         self.simulation_thread.start()
         
-        logger.info("ECG 신호 시뮬레이션 시작")
-        return True
+        logger.info("ECG 시뮬레이션이 시작되었습니다.")
     
-    def stop_simulation(self):
+    def stop(self):
         """
-        ECG 신호 시뮬레이션 중지
-        
-        Returns:
-            bool: 중지 성공 여부
+        ECG 시뮬레이션을 중지합니다.
         """
         if not self.running:
             logger.warning("시뮬레이션이 실행 중이지 않습니다.")
-            return True
+            return
         
-        # 시뮬레이션 스레드 중지
         self.running = False
+        
         if self.simulation_thread and self.simulation_thread.is_alive():
-            self.simulation_thread.join(timeout=2.0)
-        self.simulation_thread = None
+            self.simulation_thread.join(timeout=1.0)
         
-        logger.info("ECG 신호 시뮬레이션 중지")
-        return True
-    
-    def set_callback(self, callback_function):
-        """
-        새로운 ECG 데이터가 있을 때 호출될 콜백 함수 설정
-        
-        Args:
-            callback_function (function): 콜백 함수
-        """
-        self.callback = callback_function
-        logger.info("콜백 함수가 설정되었습니다.")
-    
-    def get_data(self, block=True, timeout=1.0):
-        """
-        시뮬레이션된 ECG 데이터 가져오기
-        
-        Args:
-            block (bool): 데이터가 없을 경우 대기 여부
-            timeout (float): 대기 시간(초)
-            
-        Returns:
-            numpy.ndarray: ECG 데이터 또는 None
-        """
-        if not self.running:
-            logger.warning("시뮬레이션이 실행 중이지 않습니다.")
-            return None
-        
-        try:
-            return self.data_queue.get(block=block, timeout=timeout)
-        except Queue.Empty:
-            return None
-        except Exception as e:
-            logger.error(f"데이터 가져오기 오류: {e}")
-            return None
+        logger.info("ECG 시뮬레이션이 중지되었습니다.")
     
     def _simulation_worker(self):
         """
-        ECG 신호 시뮬레이션 스레드 함수
+        ECG 시뮬레이션 워커 함수
         """
-        logger.info("ECG 시뮬레이션 스레드 시작")
-        
-        # 시뮬레이션 변수
-        chunk_size = int(self.sampling_rate * 0.2)  # 0.2초 단위로 데이터 생성
-        t = 0.0  # 총 시뮬레이션 시간 (초)
+        start_time = time.time()
         
         # 시뮬레이션 루프
         while self.running:
             try:
-                # 현재 상태 확인 및 상태 전환 처리
-                self._check_state_transition(t)
+                # 현재 패턴 템플릿 가져오기
+                template = self.templates[self.current_pattern]
                 
-                # 현재 상태에 따른 심박수 및 변동성 조절
-                heart_rate, hrv = self._get_heart_parameters()
+                # 현재 심박수에 기반한 RR 간격 계산 (초)
+                # 60초 / 심박수 = RR 간격(초)
+                rr_interval = 60.0 / self.current_heart_rate
                 
-                # ECG 신호 채널 생성
-                ecg_signal = self._generate_ecg_signal(chunk_size / self.sampling_rate, heart_rate, hrv)
+                # 현재 패턴에 맞는 HRV 적용
+                if self.current_pattern == ECGPatternType.ARRHYTHMIA:
+                    # 부정맥은 불규칙한 간격
+                    rr_variation = rr_interval * self.heart_rate_variability * np.random.randn() * 2
+                else:
+                    # 정상 HRV 변이
+                    rr_variation = rr_interval * self.heart_rate_variability * np.random.randn()
                 
-                # 큐에 데이터 추가
-                try:
-                    self.data_queue.put(ecg_signal, block=False)
-                    
-                    # 콜백 실행
-                    if self.callback is not None:
-                        self.callback(ecg_signal)
-                        
-                except Queue.Full:
-                    # 큐가 가득찬 경우 가장 오래된 항목 제거 후 추가
-                    self.data_queue.get()
-                    self.data_queue.put(ecg_signal, block=False)
+                # RR 간격 변이 적용
+                current_rr = max(0.2, min(2.0, rr_interval + rr_variation))  # 0.2-2.0초 범위로 제한
                 
-                # 시간 증가
-                t += chunk_size / self.sampling_rate
+                # 템플릿 길이에 맞게 신호 샘플 수 계산
+                n_samples = int(current_rr * self.sampling_rate)
                 
-                # 실제 하드웨어 시간 시뮬레이션
-                time.sleep(chunk_size / self.sampling_rate)
+                # 템플릿보다 긴 경우, 나머지 부분을 0으로 채움
+                if n_samples > len(template):
+                    ecg_signal = np.zeros(n_samples)
+                    ecg_signal[:len(template)] = template
+                else:
+                    # 템플릿보다 짧은 경우, 템플릿을 자름
+                    ecg_signal = template[:n_samples]
+                
+                # 노이즈 추가
+                noise = self.noise_level * np.random.randn(len(ecg_signal))
+                ecg_signal = ecg_signal + noise
+                
+                # 시간 데이터
+                current_time = time.time() - start_time
+                timestamps = np.linspace(
+                    current_time,
+                    current_time + current_rr,
+                    len(ecg_signal)
+                )
+                
+                # 결과 저장
+                self.generated_data.extend(ecg_signal)
+                self.timestamps.extend(timestamps)
+                
+                # 버퍼 크기 제한 (최대 1분)
+                max_buffer = 60 * self.sampling_rate
+                if len(self.generated_data) > max_buffer:
+                    self.generated_data = self.generated_data[-max_buffer:]
+                    self.timestamps = self.timestamps[-max_buffer:]
+                
+                # 리스너에게 알림
+                for listener in self.listeners:
+                    try:
+                        listener({
+                            "data": ecg_signal.tolist(),
+                            "timestamp": current_time,
+                            "sampling_rate": self.sampling_rate,
+                            "pattern": self.current_pattern.value,
+                            "heart_rate": self.current_heart_rate
+                        })
+                    except Exception as e:
+                        logger.error(f"리스너 호출 중 오류 발생: {e}")
+                
+                # 다음 심박까지 대기
+                time.sleep(current_rr * 0.5)  # 실제 시간의 2배 속도로 시뮬레이션
                 
             except Exception as e:
-                logger.error(f"ECG 시뮬레이션 오류: {e}")
-                time.sleep(0.5)  # 오류 발생 시 잠시 대기
-        
-        logger.info("ECG 시뮬레이션 스레드 종료")
+                logger.error(f"ECG 시뮬레이션 중 오류 발생: {e}")
+                time.sleep(0.1)
     
-    def _check_state_transition(self, current_time):
+    def get_data(self, duration=None):
         """
-        상태 전환 확인 및 처리
+        생성된 ECG 데이터를 가져옵니다.
         
-        Args:
-            current_time (float): 현재 시뮬레이션 시간 (초)
-        """
-        # 상태 전환 정보가 있을 경우 처리
-        if self.state_transition is not None:
-            start_time, duration, target_state = self.state_transition
+        매개변수:
+            duration (float, optional): 가져올 데이터의 지속 시간 (초). None이면 모든 데이터.
             
-            # 상태 전환 시작 시간 확인
-            if current_time >= start_time and self.current_state != target_state:
-                # 상태 전환 시작
-                self.current_state = target_state
-                logger.info(f"심장 상태 전환: {self.current_state} (시작 시간: {start_time:.1f}s, 지속 시간: {duration:.1f}s)")
+        반환값:
+            tuple: (ECG 데이터, 타임스탬프)
+        """
+        if not self.generated_data:
+            return np.array([]), np.array([])
+        
+        if duration is None:
+            return np.array(self.generated_data), np.array(self.timestamps)
+        
+        # 최근 duration 초 데이터만 가져오기
+        current_time = self.timestamps[-1]
+        start_time = current_time - duration
+        
+        # 시작 인덱스 찾기
+        start_idx = 0
+        for i, t in enumerate(self.timestamps):
+            if t >= start_time:
+                start_idx = i
+                break
+        
+        return np.array(self.generated_data[start_idx:]), np.array(self.timestamps[start_idx:])
+    
+    def visualize(self, duration=10):
+        """
+        생성된 ECG 데이터를 시각화합니다.
+        
+        매개변수:
+            duration (float): 시각화할 데이터의 지속 시간 (초)
+        """
+        data, timestamps = self.get_data(duration)
+        
+        if len(data) == 0:
+            logger.warning("시각화할 데이터가 없습니다.")
+            return
+        
+        plt.figure(figsize=(12, 6))
+        
+        # 상대적인 시간으로 변환 (첫 번째 샘플을 0초로)
+        rel_timestamps = timestamps - timestamps[0]
+        
+        plt.plot(rel_timestamps, data)
+        plt.title(f"ECG 시뮬레이션 - {self.current_pattern.value}")
+        plt.xlabel("시간 (초)")
+        plt.ylabel("진폭")
+        plt.grid(True)
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def save_data(self, filename):
+        """
+        생성된 ECG 데이터를 파일에 저장합니다.
+        
+        매개변수:
+            filename (str): 저장할 파일 이름
+        """
+        data, timestamps = self.get_data()
+        
+        if len(data) == 0:
+            logger.warning("저장할 데이터가 없습니다.")
+            return
+        
+        try:
+            np.savez(
+                filename,
+                ecg_data=data,
+                timestamps=timestamps,
+                sampling_rate=self.sampling_rate,
+                pattern=self.current_pattern.value,
+                heart_rate=self.current_heart_rate,
+                hrv_level=self.heart_rate_variability
+            )
             
-            # 상태 전환 종료 시간 확인
-            if current_time >= start_time + duration and self.current_state == target_state:
-                # 상태 전환 종료, 정상 상태로 복귀
-                self.current_state = self.STATE_NORMAL
-                self.state_transition = None  # 상태 전환 정보 초기화
-                logger.info(f"심장 상태 복귀: {self.current_state} (시간: {current_time:.1f}s)")
-    
-    def _get_heart_parameters(self):
-        """
-        현재 상태에 따른 심박수 및 HRV 값 가져오기
-        
-        Returns:
-            tuple: (heart_rate, hrv) - 심박수(bpm)와 심박변동성 값
-        """
-        # 상태별 기본 파라미터
-        if self.current_state == self.STATE_NORMAL:
-            base_hr = 60 + np.random.uniform(-5, 5)  # 정상 심박수: 55~65 bpm
-            base_hrv = 5 + np.random.uniform(-1, 1)  # 정상 HRV: 4~6
-        elif self.current_state == self.STATE_STRESS:
-            base_hr = 85 + np.random.uniform(-5, 10)  # 스트레스 시 심박수: 80~95 bpm
-            base_hrv = 3 + np.random.uniform(-1, 1)   # 스트레스 시 HRV: 2~4 (감소)
-        elif self.current_state == self.STATE_ANXIETY:
-            base_hr = 100 + np.random.uniform(-5, 15)  # 불안 시 심박수: 95~115 bpm
-            base_hrv = 2 + np.random.uniform(-0.5, 0.5) # 불안 시 HRV: 1.5~2.5 (크게 감소)
-        elif self.current_state == self.STATE_RELAXED:
-            base_hr = 55 + np.random.uniform(-5, 5)    # 편안 시 심박수: 50~60 bpm
-            base_hrv = 8 + np.random.uniform(-1, 2)    # 편안 시 HRV: 7~10 (증가)
-        else:
-            # 기본값 (정상 상태)
-            base_hr = 60 + np.random.uniform(-5, 5)
-            base_hrv = 5 + np.random.uniform(-1, 1)
-        
-        # 현재 값 업데이트
-        self.heart_rate = base_hr
-        self.heart_rate_variability = base_hrv
-        
-        return base_hr, base_hrv
-    
-    def _generate_ecg_signal(self, duration, heart_rate, hrv, noise_level=0.05):
-        """
-        ECG 신호 생성
-        
-        Args:
-            duration (float): 생성할 신호 길이 (초)
-            heart_rate (float): 심박수 (bpm)
-            hrv (float): 심박 변동성 값
-            noise_level (float): 잡음 수준 (0~1)
+            logger.info(f"ECG 데이터가 {filename}에 저장되었습니다.")
             
-        Returns:
-            numpy.ndarray: 생성된 ECG 신호
-        """
-        # 시간 보독 만들기
-        num_samples = int(duration * self.sampling_rate)
-        t = np.linspace(0, duration, num_samples, endpoint=False)
-        
-        # 기본 심박에 변동성 추가 (상태에 따라 다름)
-        period = 60.0 / heart_rate  # 심박수를 주기(초)로 변환
-        
-        # 심박 변동성 반영
-        # HRV가 낮을수록 더 규칙적인 심박, 높을수록 덤 변동성 있는 심박
-        hrv_factor = hrv / 10.0  # 0~1 범위로 정규화
-        
-        # 심장 주기에 변동성 추가
-        heart_phase = np.cumsum(1.0 + hrv_factor * np.random.normal(0, 0.1, num_samples)) / self.sampling_rate / period
-        heart_phase = heart_phase % 1.0  # 0~1 범위로 정규화
-        
-        # ECG 파형 생성 (P-QRS-T 파형)
-        ecg_signal = self._generate_ecg_waveform(heart_phase)
-        
-        # 잡음 추가
-        if noise_level > 0:
-            noise = noise_level * np.random.normal(0, 1, num_samples)
-            # 현재 상태에 따라 잡음 정도 조정
-            if self.current_state == self.STATE_ANXIETY:
-                # 불안 상태에서는 잡음이 더 심함
-                noise = noise_level * 1.5 * np.random.normal(0, 1, num_samples)
-            ecg_signal += noise
-        
-        return ecg_signal
+        except Exception as e:
+            logger.error(f"데이터 저장 중 오류 발생: {e}")
+
+
+# 테스트 실행
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     
-    def _generate_ecg_waveform(self, heart_phase):
-        """
-        단일 심장 싸이클의 ECG 파형 생성 (P-QRS-T 파형)
-        
-        Args:
-            heart_phase (numpy.ndarray): 심장 주기 위상 (0~1 범위의 값)
-            
-        Returns:
-            numpy.ndarray: 생성된 ECG 파형
-        """
-        # 파라미터 설정
-        p_time = 0.2    # P-wave 발생 시점 (0~1 사이클 내)
-        p_width = 0.08  # P-wave 폭
-        p_amp = 0.25    # P-wave 진폭
-        
-        qrs_time = 0.4  # QRS 발생 시점
-        q_width = 0.02  # Q-wave 폭
-        q_amp = -0.125   # Q-wave 진폭 (음수값)
-        r_width = 0.02  # R-wave 폭
-        r_amp = 1.0     # R-wave 진폭 (ECG에서 가장 큰 피크)
-        s_width = 0.02  # S-wave 폭
-        s_amp = -0.3    # S-wave 진폭 (음수값)
-        
-        t_time = 0.6   # T-wave 발생 시점
-        t_width = 0.1   # T-wave 폭
-        t_amp = 0.35    # T-wave 진폭
-        
-        # 가우시안 함수 (피크 생성용)
-        def gaussian(x, amp, mean, width):
-            return amp * np.exp(-((x - mean) ** 2) / (2 * width ** 2))
-        
-        # ECG 파형 생성
-        p_wave = gaussian(heart_phase, p_amp, p_time, p_width)
-        q_wave = gaussian(heart_phase, q_amp, qrs_time - q_width, q_width)
-        r_wave = gaussian(heart_phase, r_amp, qrs_time, r_width)
-        s_wave = gaussian(heart_phase, s_amp, qrs_time + s_width, s_width)
-        t_wave = gaussian(heart_phase, t_amp, t_time, t_width)
-        
-        # 모든 파형 합성
-        ecg = p_wave + q_wave + r_wave + s_wave + t_wave
-        
-        # 부정수 조정 (0.1 정도의 기준선)
-        baseline = 0.1 * np.sin(2 * np.pi * heart_phase * 0.5)  # 완만한 기준선 엄도 추가
-        
-        return ecg + baseline
+    simulator = ECGSimulator(sampling_rate=256, noise_level=0.05)
     
-    def simulate_stress_event(self, start_time=None, duration=60.0, intensity=0.8):
-        """
-        스트레스/불안 상태 시뮬레이션
-        
-        Args:
-            start_time (float): 이벤트 시작 시간 (초), None이면 현재 시간
-            duration (float): 이벤트 지속 시간 (초)
-            intensity (float): 강도 (0~1), 1에 가까울수록 불안 상태
-            
-        Returns:
-            bool: 설정 성공 여부
-        """
-        if not self.running:
-            logger.warning("시뮬레이션이 실행 중이지 않습니다.")
-            return False
-        
-        # 강도에 따라 상태 결정 (스트레스 또는 불안)
-        target_state = self.STATE_STRESS if intensity < 0.7 else self.STATE_ANXIETY
-        
-        # 시작 시간이 None이면 현재 시간 사용
-        if start_time is None:
-            # 현재 시뮬레이션 시간 추정 (예상)
-            if hasattr(self, 'simulation_start_time'):
-                current_time = time.time() - self.simulation_start_time
-            else:
-                current_time = 0
-            start_time = current_time
-        
-        # 상태 전환 정보 설정
-        self.state_transition = (start_time, duration, target_state)
-        
-        logger.info(f"스트레스/불안 이벤트 시뮬레이션 설정 - 상태: {target_state}, " +
-                 f"시작 시간: {start_time:.1f}s, 지속 시간: {duration:.1f}s, 강도: {intensity:.2f}")
-        return True
+    def data_callback(data):
+        logger.info(f"ECG 데이터 생성: {len(data['data'])} 샘플")
     
-    def simulate_relaxation(self, start_time=None, duration=30.0, target_level=0.1):
-        """
-        편안 상태 시뮬레이션 (자극기 사용 후 회복 효과 시뮬레이션)
-        
-        Args:
-            start_time (float): 이벤트 시작 시간 (초), None이면 현재 시간
-            duration (float): 이벤트 지속 시간 (초)
-            target_level (float): 목표 수치 (0~1), 0에 가까울수록 더 편안
-            
-        Returns:
-            bool: 설정 성공 여부
-        """
-        if not self.running:
-            logger.warning("시뮬레이션이 실행 중이지 않습니다.")
-            return False
-        
-        # 시작 시간이 None이면 현재 시간 사용
-        if start_time is None:
-            # 현재 시뮬레이션 시간 추정 (예상)
-            if hasattr(self, 'simulation_start_time'):
-                current_time = time.time() - self.simulation_start_time
-            else:
-                current_time = 0
-            start_time = current_time
-        
-        # 상태 전환 정보 설정
-        self.state_transition = (start_time, duration, self.STATE_RELAXED)
-        
-        logger.info(f"편안 상태 시뮬레이션 설정 - 시작 시간: {start_time:.1f}s, " +
-                 f"지속 시간: {duration:.1f}s, 목표 수치: {target_level:.2f}")
-        return True
+    simulator.add_listener(data_callback)
     
-    def get_current_state(self):
-        """
-        현재 시뮬레이션 상태 가져오기
-        
-        Returns:
-            dict: 현재 시뮬레이션 상태 정보
-        """
-        return {
-            'state': self.current_state,
-            'heart_rate': self.heart_rate,
-            'heart_rate_variability': self.heart_rate_variability,
-            'state_transition': self.state_transition,
-            'running': self.running
-        }
+    # 정상 패턴으로 시작
+    simulator.set_pattern(ECGPatternType.NORMAL)
+    simulator.start()
+    
+    # 5초간 실행 후 불안 패턴으로 변경
+    time.sleep(5)
+    simulator.set_pattern(ECGPatternType.ANXIETY)
+    
+    # 추가 5초 실행 후 중지
+    time.sleep(5)
+    simulator.stop()
+    
+    # 데이터 시각화
+    simulator.visualize(duration=10)
