@@ -1,5 +1,3 @@
-# HRV 분석기 패키지
+from .hrv_anxiety_predictor import HRVAnxietyPredictor
 
-from .hrv_analysis import HRVAnalyzer
-
-__all__ = ['HRVAnalyzer']
+__all__ = ['HRVAnxietyPredictor']
