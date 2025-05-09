@@ -1,5 +1,3 @@
-# ECG 센서 패키지
+from .ecg_interface import ECGInterface, SensorStatus
 
-from .sensor_interface import ECGSensorInterface
-
-__all__ = ['ECGSensorInterface']
+__all__ = ['ECGInterface', 'SensorStatus']
