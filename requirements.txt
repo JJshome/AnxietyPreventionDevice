@@ -1,0 +1,20 @@
+# 메인 의존성
+numpy>=1.20.0
+scipy>=1.6.0
+pandas>=1.2.0
+matplotlib>=3.3.0
+biosppy>=0.7.0
+hrv>=0.2.8
+PyBluez>=0.23.0;platform_system!='Windows' # Windows 외 시스템용
+PyBluez-win10>=0.23.0;platform_system=='Windows' # Windows 10용
+Flask>=2.0.0
+Flask-SocketIO>=5.0.0
+requests>=2.25.0
+pyserial>=3.5
+
+# 시뮬레이션 환경
+pyqtgraph>=0.12.0
+PyQt5>=5.15.0
+
+# 테스트용
+pytest>=6.2.0
