@@ -1,480 +1,584 @@
-"""
-스테레오 자극 제어 모듈 (특허 10-2459338 기반)
-
-두 개의 저주파 자극기를 스테레오 방식으로 제어하는 클래스를 구현합니다.
-각 자극기는 서로 다른 위상의 신호를 받으며, 위상 차이 조절이 가능합니다.
-"""
-
 import numpy as np
 import time
 import threading
 import logging
+import json
+import uuid
 from enum import Enum
-from typing import Dict, List, Tuple, Optional, Union
-from .stimulator_interface import StimulatorInterface
+import matplotlib.pyplot as plt
+from datetime import datetime
+import os
 
-# 로깅 설정
 logger = logging.getLogger(__name__)
 
 class WaveformType(Enum):
-    """자극 파형 타입 열거형"""
-    SINE = "sine"
-    SQUARE = "square"
-    TRIANGLE = "triangle"
-    SAWTOOTH = "sawtooth"
-    MONOPHASIC = "monophasic"
-    BIPHASIC = "biphasic"
+    """자극 파형 유형"""
+    SINE = "sine"         # 정현파
+    SQUARE = "square"     # 구형파
+    TRIANGLE = "triangle" # 삼각파
+    SAWTOOTH = "sawtooth" # 톱니파
+    PULSE = "pulse"       # 펄스파
 
+class PhaseType(Enum):
+    """자극 위상 유형"""
+    MONOPHASIC = "monophasic"  # 단상성
+    BIPHASIC = "biphasic"      # 양상성
+    ASYMMETRIC = "asymmetric"  # 비대칭
 
 class StereoStimulator:
     """
-    스테레오 저주파 자극기 제어 클래스
+    스테레오 방식의 저주파 자극기를 제어하는 클래스.
     
-    특허 10-2459338에 기반한 구현으로, 두 개 이상의 저주파 자극기에
-    위상차를 갖는 신호를 인가하여 스테레오 자극 효과를 제공합니다.
+    특허 10-2459338에 기반하여 구현되었으며,
+    두 개 이상의 저주파 자극기에 위상차를 적용하여
+    스테레오 효과를 제공합니다.
     """
-
-    def __init__(self):
-        """스테레오 자극기 제어 클래스 초기화"""
-        self.stimulators: Dict[str, StimulatorInterface] = {}
-        self.is_active = False
-        self.current_config = {}
+    
+    def __init__(self, num_stimulators=2, 
+                 base_frequency=10,
+                 waveform_type=WaveformType.SINE,
+                 phase_type=PhaseType.BIPHASIC,
+                 phase_delay=0.5,
+                 amplitude=0.5,
+                 pulse_width=0.2):
+        """
+        StereoStimulator 초기화 함수
+        
+        매개변수:
+            num_stimulators (int): 자극기 수 (기본값: 2)
+            base_frequency (float): 기본 주파수 (Hz)
+            waveform_type (WaveformType): 파형 유형
+            phase_type (PhaseType): 위상 유형
+            phase_delay (float): 자극기 간 위상 지연 (초)
+            amplitude (float): 신호 진폭 (0-1 사이)
+            pulse_width (float): 펄스 폭 (초, 펄스파에만 적용)
+        """
+        self.num_stimulators = num_stimulators
+        self.base_frequency = base_frequency
+        self.waveform_type = waveform_type
+        self.phase_type = phase_type
+        self.phase_delay = phase_delay
+        self.amplitude = amplitude
+        self.pulse_width = pulse_width
+        
+        # 자극기별 설정
+        self.stimulator_settings = []
+        for i in range(num_stimulators):
+            self.stimulator_settings.append({
+                'id': f"stim_{i+1}",
+                'enabled': True,
+                'amplitude': amplitude,
+                'frequency': base_frequency,
+                'delay': i * phase_delay if i > 0 else 0,
+                'balance': 1.0  # 자극 강도 밸런스 (0-1)
+            })
+        
+        # 자극 신호 생성 및 제어를 위한 변수
+        self.running = False
         self.stimulation_thread = None
+        self.music_mode = False
+        self.music_features = None
         
-        # 기본 자극 파라미터 설정
-        self.default_params = {
-            "frequency": 30.0,       # Hz
-            "pulse_width": 100.0,    # μs
-            "amplitude": 2.0,        # mA
-            "waveform": WaveformType.BIPHASIC,
-            "duration": 1200,        # seconds (20 minutes)
-            "phase_delay": 0.5,      # seconds
-            "ramp_up": 5.0,          # seconds
-            "ramp_down": 5.0,        # seconds
-        }
+        # 생성된 신호 저장
+        self.generated_signals = [[] for _ in range(num_stimulators)]
+        self.generated_times = []
         
-    def register_stimulator(self, stimulator_id: str, stimulator: StimulatorInterface) -> bool:
+        # 자극 세션 ID
+        self.session_id = None
+        
+        logger.info(f"StereoStimulator 초기화 완료 (자극기 수: {num_stimulators})")
+    
+    def set_stimulator_balance(self, stim_idx, balance):
         """
-        저주파 자극기를 등록합니다.
+        특정 자극기의 강도 밸런스를 설정합니다.
         
-        Args:
-            stimulator_id: 자극기 고유 식별자
-            stimulator: 자극기 인터페이스 구현 객체
-            
-        Returns:
-            성공 여부
+        매개변수:
+            stim_idx (int): 자극기 인덱스 (0부터 시작)
+            balance (float): 강도 밸런스 (0-1 사이)
         """
-        if stimulator_id in self.stimulators:
-            logger.warning(f"Stimulator {stimulator_id} is already registered")
-            return False
-        
-        self.stimulators[stimulator_id] = stimulator
-        logger.info(f"Stimulator {stimulator_id} registered successfully")
-        return True
-        
-    def unregister_stimulator(self, stimulator_id: str) -> bool:
-        """
-        등록된 자극기를 제거합니다.
-        
-        Args:
-            stimulator_id: 자극기 고유 식별자
-            
-        Returns:
-            성공 여부
-        """
-        if stimulator_id not in self.stimulators:
-            logger.warning(f"Stimulator {stimulator_id} not found")
-            return False
-        
-        # 활성 상태라면 자극 중지
-        if self.is_active:
-            self.stop_stimulation()
-            
-        del self.stimulators[stimulator_id]
-        logger.info(f"Stimulator {stimulator_id} unregistered successfully")
-        return True
-        
-    def get_stimulators(self) -> List[str]:
-        """
-        등록된 모든 자극기 ID 목록을 반환합니다.
-        
-        Returns:
-            자극기 ID 리스트
-        """
-        return list(self.stimulators.keys())
-        
-    def get_stimulator_status(self, stimulator_id: str) -> Dict:
-        """
-        특정 자극기의 상태를 반환합니다.
-        
-        Args:
-            stimulator_id: 자극기 고유 식별자
-            
-        Returns:
-            자극기 상태 정보 딕셔너리
-        """
-        if stimulator_id not in self.stimulators:
-            logger.warning(f"Stimulator {stimulator_id} not found")
-            return {"error": "stimulator_not_found"}
-            
-        return self.stimulators[stimulator_id].get_status()
-        
-    def start_stimulation(self, params: Optional[Dict] = None) -> bool:
-        """
-        스테레오 자극을 시작합니다.
-        
-        Args:
-            params: 자극 파라미터 딕셔너리 (None인 경우 기본값 사용)
-            
-        Returns:
-            성공 여부
-        """
-        if len(self.stimulators) < 2:
-            logger.error("At least two stimulators are required for stereo stimulation")
-            return False
-            
-        if self.is_active:
-            logger.warning("Stimulation is already active")
-            return False
-            
-        # 파라미터 설정
-        self.current_config = self.default_params.copy()
-        if params:
-            self.current_config.update(params)
-            
-        # 스레드 시작
-        self.is_active = True
-        self.stimulation_thread = threading.Thread(
-            target=self._stimulation_worker,
-            daemon=True
-        )
-        self.stimulation_thread.start()
-        logger.info("Stereo stimulation started")
-        return True
-        
-    def stop_stimulation(self) -> bool:
-        """
-        스테레오 자극을 중지합니다.
-        
-        Returns:
-            성공 여부
-        """
-        if not self.is_active:
-            logger.warning("Stimulation is not active")
-            return False
-            
-        self.is_active = False
-        if self.stimulation_thread:
-            self.stimulation_thread.join(timeout=2.0)
-            
-        # 모든 자극기 중지
-        for stim_id, stimulator in self.stimulators.items():
-            stimulator.stop()
-            logger.info(f"Stopped stimulator {stim_id}")
-            
-        logger.info("Stereo stimulation stopped")
-        return True
-        
-    def set_phase_delay(self, delay: float) -> bool:
+        if 0 <= stim_idx < self.num_stimulators:
+            self.stimulator_settings[stim_idx]['balance'] = max(0, min(1, balance))
+            logger.info(f"자극기 {stim_idx}의 밸런스를 {balance}로 설정")
+        else:
+            logger.warning(f"유효하지 않은 자극기 인덱스: {stim_idx}")
+    
+    def set_phase_delay(self, delay):
         """
         자극기 간 위상 지연을 설정합니다.
         
-        Args:
-            delay: 위상 지연 시간 (초, 0.1-1.0초 범위)
-            
-        Returns:
-            성공 여부
+        매개변수:
+            delay (float): 위상 지연 (초)
         """
-        if delay < 0.1 or delay > 1.0:
-            logger.error("Phase delay must be between 0.1 and 1.0 seconds")
-            return False
+        # 위상 지연 범위 검증 (0.1-1.0초, 특허 명세에 따름)
+        if 0.1 <= delay <= 1.0:
+            self.phase_delay = delay
             
-        self.current_config["phase_delay"] = delay
-        logger.info(f"Phase delay set to {delay} seconds")
-        return True
-        
-    def set_balance(self, balance_params: Dict[str, float]) -> bool:
-        """
-        각 자극기의 자극 강도 밸런스를 설정합니다.
-        
-        Args:
-            balance_params: {자극기ID: 강도(0.0-1.0)} 형식의 딕셔너리
-            
-        Returns:
-            성공 여부
-        """
-        for stim_id, level in balance_params.items():
-            if stim_id not in self.stimulators:
-                logger.error(f"Stimulator {stim_id} not found")
-                return False
+            # 모든 자극기의 지연 업데이트
+            for i in range(1, self.num_stimulators):
+                self.stimulator_settings[i]['delay'] = i * delay
                 
-            if level < 0.0 or level > 1.0:
-                logger.error(f"Balance level must be between 0.0 and 1.0, got {level}")
-                return False
-                
-        # 현재 설정에 반영
-        if "balance" not in self.current_config:
-            self.current_config["balance"] = {}
-            
-        self.current_config["balance"].update(balance_params)
-        logger.info(f"Balance updated: {balance_params}")
-        return True
-        
-    def synchronize(self) -> bool:
-        """
-        모든 자극기와 동기화를 수행합니다.
-        
-        Returns:
-            성공 여부
-        """
-        success = True
-        for stim_id, stimulator in self.stimulators.items():
-            if not stimulator.synchronize():
-                logger.error(f"Failed to synchronize stimulator {stim_id}")
-                success = False
-                
-        return success
-        
-    def _generate_waveform(self, t: float, config: Dict) -> float:
-        """
-        특정 시간(t)에 대한 자극 파형 값을 생성합니다.
-        
-        Args:
-            t: 시간(초)
-            config: 자극 설정 딕셔너리
-            
-        Returns:
-            해당 시점의 자극 강도 값
-        """
-        freq = config["frequency"]
-        amp = config["amplitude"]
-        phase = 0.0  # 기본 위상
-        
-        # 파형 타입에 따른 계산
-        waveform = config["waveform"]
-        
-        if waveform == WaveformType.SINE:
-            return amp * np.sin(2 * np.pi * freq * t + phase)
-        elif waveform == WaveformType.SQUARE:
-            return amp * np.sign(np.sin(2 * np.pi * freq * t + phase))
-        elif waveform == WaveformType.TRIANGLE:
-            return amp * (2 / np.pi) * np.arcsin(np.sin(2 * np.pi * freq * t + phase))
-        elif waveform == WaveformType.SAWTOOTH:
-            return amp * (2 * (freq * t + phase / (2 * np.pi) - np.floor(freq * t + phase / (2 * np.pi) + 0.5)))
-        elif waveform == WaveformType.MONOPHASIC:
-            val = np.sin(2 * np.pi * freq * t + phase)
-            return amp * max(0, val)
-        elif waveform == WaveformType.BIPHASIC:
-            # 직접 임구현한 biphasic 파형
-            cycle = (t * freq) % 1.0
-            if cycle < 0.2:
-                return amp
-            elif cycle < 0.3:
-                return 0
-            elif cycle < 0.5:
-                return -amp
-            else:
-                return 0
+            logger.info(f"위상 지연이 {delay}초로 설정되었습니다.")
         else:
-            return 0
+            logger.warning(f"유효하지 않은 위상 지연 값: {delay}, 범위는 0.1-1.0초여야 합니다.")
+    
+    def set_waveform(self, waveform_type, phase_type=None):
+        """
+        자극 파형 유형을 설정합니다.
+        
+        매개변수:
+            waveform_type (WaveformType): 파형 유형
+            phase_type (PhaseType, optional): 위상 유형
+        """
+        if isinstance(waveform_type, str):
+            try:
+                waveform_type = WaveformType(waveform_type)
+            except ValueError:
+                logger.warning(f"유효하지 않은 파형 유형: {waveform_type}")
+                return
+        
+        self.waveform_type = waveform_type
+        
+        if phase_type:
+            if isinstance(phase_type, str):
+                try:
+                    phase_type = PhaseType(phase_type)
+                except ValueError:
+                    logger.warning(f"유효하지 않은 위상 유형: {phase_type}")
+                    return
+            self.phase_type = phase_type
+        
+        logger.info(f"파형이 {self.waveform_type.value}로 설정되었으며, 위상 유형은 {self.phase_type.value}입니다.")
+    
+    def set_frequency(self, frequency):
+        """
+        기본 주파수를 설정합니다.
+        
+        매개변수:
+            frequency (float): 주파수 (Hz)
+        """
+        if 1 <= frequency <= 100:  # 일반적인 저주파 자극 범위
+            self.base_frequency = frequency
             
-    def _stimulation_worker(self):
-        """자극 생성 및 제어 워커 스레드"""
-        logger.info("Stimulation worker thread started")
-        
-        stimulator_list = list(self.stimulators.keys())
-        num_stimulators = len(stimulator_list)
-        
-        # 시작 시간 기록
-        start_time = time.time()
-        
-        # 각 자극기 초기화
-        for stim_id, stimulator in self.stimulators.items():
-            stimulator.initialize(self.current_config)
-            stimulator.start()
-            
-        try:
-            while self.is_active:
-                current_time = time.time() - start_time
+            # 모든 자극기의 주파수 업데이트
+            for i in range(self.num_stimulators):
+                self.stimulator_settings[i]['frequency'] = frequency
                 
-                # 지정된 자극 시간을 초과한 경우
-                if current_time >= self.current_config["duration"]:
-                    logger.info("Stimulation duration reached")
-                    self.is_active = False
-                    break
+            logger.info(f"기본 주파수가 {frequency}Hz로 설정되었습니다.")
+        else:
+            logger.warning(f"유효하지 않은 주파수 값: {frequency}Hz, 범위는 1-100Hz여야 합니다.")
+    
+    def set_amplitude(self, amplitude, stim_idx=None):
+        """
+        자극 진폭을 설정합니다.
+        
+        매개변수:
+            amplitude (float): 진폭 (0-1 사이)
+            stim_idx (int, optional): 특정 자극기 인덱스. None이면 모든 자극기에 적용
+        """
+        amplitude = max(0, min(1, amplitude))
+        
+        if stim_idx is not None:
+            if 0 <= stim_idx < self.num_stimulators:
+                self.stimulator_settings[stim_idx]['amplitude'] = amplitude
+                logger.info(f"자극기 {stim_idx}의 진폭을 {amplitude}로 설정")
+            else:
+                logger.warning(f"유효하지 않은 자극기 인덱스: {stim_idx}")
+        else:
+            self.amplitude = amplitude
+            for i in range(self.num_stimulators):
+                self.stimulator_settings[i]['amplitude'] = amplitude
+            logger.info(f"모든 자극기의 진폭이 {amplitude}로 설정되었습니다.")
+    
+    def enable_stimulator(self, stim_idx, enabled=True):
+        """
+        특정 자극기를 활성화/비활성화합니다.
+        
+        매개변수:
+            stim_idx (int): 자극기 인덱스
+            enabled (bool): 활성화 여부
+        """
+        if 0 <= stim_idx < self.num_stimulators:
+            self.stimulator_settings[stim_idx]['enabled'] = enabled
+            status = "활성화" if enabled else "비활성화"
+            logger.info(f"자극기 {stim_idx}가 {status}되었습니다.")
+        else:
+            logger.warning(f"유효하지 않은 자극기 인덱스: {stim_idx}")
+    
+    def generate_waveform(self, t, settings):
+        """
+        주어진 시간 t와 설정에 따라 파형을 생성합니다.
+        
+        매개변수:
+            t (float): 시간 (초)
+            settings (dict): 자극기 설정
+            
+        반환값:
+            float: 생성된 파형 값 (-1에서 1 사이)
+        """
+        # 진폭, 주파수, 지연 적용
+        amplitude = settings['amplitude'] * settings['balance']
+        frequency = settings['frequency']
+        delay = settings['delay']
+        
+        # 지연 적용
+        t = t - delay
+        
+        # 0보다 작은 시간에서는 신호 없음
+        if t < 0:
+            return 0
+        
+        # 파형 생성
+        if self.waveform_type == WaveformType.SINE:
+            # 정현파
+            signal = np.sin(2 * np.pi * frequency * t)
+        elif self.waveform_type == WaveformType.SQUARE:
+            # 구형파
+            signal = np.sign(np.sin(2 * np.pi * frequency * t))
+        elif self.waveform_type == WaveformType.TRIANGLE:
+            # 삼각파
+            signal = 2 * np.abs(2 * (t * frequency - np.floor(t * frequency + 0.5))) - 1
+        elif self.waveform_type == WaveformType.SAWTOOTH:
+            # 톱니파
+            signal = 2 * (t * frequency - np.floor(t * frequency + 0.5))
+        elif self.waveform_type == WaveformType.PULSE:
+            # 펄스파
+            cycle_time = 1.0 / frequency
+            t_in_cycle = t % cycle_time
+            pulse_duration = self.pulse_width
+            signal = 1.0 if t_in_cycle < pulse_duration else 0
+        else:
+            # 기본값은 정현파
+            signal = np.sin(2 * np.pi * frequency * t)
+        
+        # 위상 유형 적용
+        if self.phase_type == PhaseType.MONOPHASIC:
+            # 단상성: 양의 값만 유지, 음의 값은 0
+            signal = max(0, signal)
+        elif self.phase_type == PhaseType.ASYMMETRIC:
+            # 비대칭: 음의 값의 진폭을 절반으로
+            if signal < 0:
+                signal = signal * 0.5
+        # BIPHASIC은 기본값으로 그대로 유지
+        
+        # 진폭 적용
+        return signal * amplitude
+    
+    def start_stimulation(self, duration=300, callback=None):
+        """
+        자극을 시작합니다.
+        
+        매개변수:
+            duration (int): 자극 지속 시간 (초)
+            callback (function): 자극 완료 후 호출될 콜백 함수
+        """
+        if self.running:
+            logger.warning("자극이 이미 실행 중입니다.")
+            return
+        
+        self.running = True
+        self.session_id = str(uuid.uuid4())
+        
+        # 자극 결과 초기화
+        self.generated_signals = [[] for _ in range(self.num_stimulators)]
+        self.generated_times = []
+        
+        # 자극 스레드 시작
+        self.stimulation_thread = threading.Thread(
+            target=self._stimulation_worker,
+            args=(duration, callback)
+        )
+        self.stimulation_thread.daemon = True
+        self.stimulation_thread.start()
+        
+        logger.info(f"자극이 시작되었습니다. 세션 ID: {self.session_id}, 지속 시간: {duration}초")
+        return self.session_id
+    
+    def _stimulation_worker(self, duration, callback):
+        """
+        자극 생성 및 전송을 처리하는 워커 함수
+        
+        매개변수:
+            duration (int): 자극 지속 시간 (초)
+            callback (function): 완료 후 호출될 콜백 함수
+        """
+        start_time = time.time()
+        end_time = start_time + duration
+        
+        try:
+            # 샘플링 속도 (초당 샘플 수)
+            sample_rate = 20
+            dt = 1.0 / sample_rate
+            
+            # 자극 생성 및 전송
+            current_time = start_time
+            while self.running and current_time < end_time:
+                # 경과 시간
+                elapsed = current_time - start_time
+                
+                # 모든 자극기에 대한 신호 생성
+                signals = []
+                for i, settings in enumerate(self.stimulator_settings):
+                    if settings['enabled']:
+                        # 음악 모드인 경우, 음악 특성 기반 자극 생성
+                        if self.music_mode and self.music_features:
+                            signal = self._generate_music_based_signal(elapsed, i)
+                        else:
+                            # 일반 모드, 설정에 따른 자극 생성
+                            signal = self.generate_waveform(elapsed, settings)
+                    else:
+                        signal = 0
                     
-                # 각 자극기에 신호 전송 (위상 지연 적용)
-                for idx, stim_id in enumerate(stimulator_list):
-                    # 위상 지연 계산 (초)
-                    phase_offset = idx * self.current_config["phase_delay"]
-                    
-                    # 현재 시간에 위상 지연을 적용
-                    adjusted_time = current_time - phase_offset
-                    
-                    # 음수 시간은 0으로 처리 (시작 전)
-                    if adjusted_time < 0:
-                        continue
-                        
-                    # 자극 세기 계산
-                    amplitude = self._calculate_amplitude(adjusted_time, stim_id)
-                    
-                    # 자극 파형 값 계산
-                    waveform_value = self._generate_waveform(adjusted_time, self.current_config)
-                    
-                    # 최종 자극 강도 계산
-                    final_intensity = amplitude * waveform_value
-                    
-                    # 자극기에 신호 전송
-                    self.stimulators[stim_id].set_intensity(final_intensity)
-                    
-                # 50ms 대기 (20Hz 업데이트 속도)
-                time.sleep(0.05)
+                    signals.append(signal)
+                    self.generated_signals[i].append(signal)
+                
+                self.generated_times.append(elapsed)
+                
+                # 자극 신호 전송 (실제 하드웨어로 전송하는 코드가 여기에 추가될 수 있음)
+                self._send_stimulation(signals, elapsed)
+                
+                # 다음 샘플 시간까지 대기
+                time.sleep(dt)
+                current_time = time.time()
+            
+            # 자극 종료 처리
+            for i in range(self.num_stimulators):
+                # 0 값의 신호 전송으로 자극 중지
+                self._send_stimulation([0] * self.num_stimulators, elapsed)
+            
+            logger.info(f"자극이 완료되었습니다. 세션 ID: {self.session_id}, 총 지속 시간: {time.time() - start_time:.2f}초")
+            
+            # 자극 결과 저장
+            self._save_stimulation_results()
+            
+            # 콜백 호출
+            if callback:
+                callback(self.session_id)
                 
         except Exception as e:
-            logger.error(f"Error in stimulation worker: {e}")
+            logger.error(f"자극 처리 중 오류 발생: {e}")
         finally:
-            # 모든 자극기 중지
-            for stim_id, stimulator in self.stimulators.items():
-                stimulator.stop()
-                
-            self.is_active = False
-            logger.info("Stimulation worker thread ended")
-            
-    def _calculate_amplitude(self, t: float, stim_id: str) -> float:
-        """
-        특정 시간에 대한 자극 강도를 계산합니다.
-        램프업/다운 및 밸런스 설정 적용.
-        
-        Args:
-            t: 경과 시간(초)
-            stim_id: 자극기 ID
-            
-        Returns:
-            계산된 자극 강도 (0.0-1.0)
-        """
-        config = self.current_config
-        duration = config["duration"]
-        ramp_up = config["ramp_up"]
-        ramp_down = config["ramp_down"]
-        
-        # 기본 진폭
-        amplitude = 1.0
-        
-        # 램프업 적용
-        if t < ramp_up:
-            amplitude = t / ramp_up
-            
-        # 램프다운 적용
-        elif t > (duration - ramp_down):
-            amplitude = (duration - t) / ramp_down
-            
-        # 밸런스 적용
-        if "balance" in config and stim_id in config["balance"]:
-            amplitude *= config["balance"][stim_id]
-            
-        return max(0.0, min(1.0, amplitude))  # 0.0-1.0 범위로 클리핑
-
-
-class MusicDrivenStereoStimulator(StereoStimulator):
-    """
-    음악 기반 스테레오 자극기 제어 클래스
+            self.running = False
     
-    특허 10-2459338에 기반하여, 음악의 비트와 음정에 따라
-    저주파 자극 패턴을 생성하는 확장 클래스입니다.
-    """
-    
-    def __init__(self):
-        """음악 기반 자극기 제어 클래스 초기화"""
-        super().__init__()
-        self.audio_features = {
-            "beats": [],       # 비트 타임스탬프 목록
-            "beat_strength": [],  # 비트 강도 목록
-            "pitch": 0.0,      # 현재 음정
-            "energy": 0.0,     # 현재 에너지 레벨
-            "tempo": 120.0,    # 템포 (BPM)
-        }
-        self.audio_timestamp = 0.0  # 오디오 재생 시작 시간
-    
-    def update_audio_features(self, features: Dict) -> None:
+    def _send_stimulation(self, signals, elapsed):
         """
-        오디오 특성 업데이트
+        자극 신호를 하드웨어로 전송합니다.
         
-        Args:
-            features: 오디오 분석 특성 딕셔너리
-        """
-        self.audio_features.update(features)
-        
-        # 음원이 새로 시작된 경우 타임스탬프 리셋
-        if "new_track" in features and features["new_track"]:
-            self.audio_timestamp = time.time()
+        매개변수:
+            signals (list): 각 자극기에 대한 신호 값 리스트
+            elapsed (float): 경과 시간
             
-        logger.debug(f"Audio features updated: tempo={self.audio_features['tempo']} BPM")
+        참고: 이 함수는 실제 구현에서 블루투스 또는 기타 통신 방식을 통해
+             하드웨어로 신호를 전송하도록 확장될 수 있습니다.
+        """
+        # 여기서는 로깅만 수행 (실제 구현에서는 하드웨어 통신 코드 추가)
+        if elapsed % 5 < 0.1:  # 5초마다 로그 기록
+            log_signals = ", ".join([f"{s:.2f}" for s in signals])
+            logger.debug(f"자극 신호 전송 (T+{elapsed:.2f}s): [{log_signals}]")
     
-    def _generate_waveform(self, t: float, config: Dict) -> float:
+    def _generate_music_based_signal(self, elapsed, stim_idx):
         """
-        음악 특성에 따른 자극 파형 생성
+        음악 특성에 기반한 자극 신호를 생성합니다.
         
-        Args:
-            t: 시간(초)
-            config: 자극 설정 딕셔너리
+        매개변수:
+            elapsed (float): 경과 시간
+            stim_idx (int): 자극기 인덱스
             
-        Returns:
-            해당 시점의 자극 강도 값
+        반환값:
+            float: 생성된 자극 신호
         """
-        if not self.audio_features["beats"]:
-            # 비트 정보가 없으면 기본 파형 사용
-            return super()._generate_waveform(t, config)
-            
-        # 오디오 재생 경과 시간
-        audio_t = time.time() - self.audio_timestamp
+        if not self.music_features or 'beats' not in self.music_features:
+            return 0
         
-        # 현재 시간에 가장 가까운 비트 찾기
-        beat_time = 0.0
-        beat_strength = 1.0
+        settings = self.stimulator_settings[stim_idx]
+        amplitude = settings['amplitude'] * settings['balance']
+        base_freq = settings['frequency']
         
-        for i, beat in enumerate(self.audio_features["beats"]):
-            if beat > audio_t:
-                if i > 0:
-                    beat_time = self.audio_features["beats"][i-1]
-                    beat_strength = self.audio_features["beat_strength"][i-1]
+        # 비트 정보에서 현재 시간에 해당하는 비트 강도 찾기
+        beats = self.music_features['beats']
+        beat_strength = 0
+        
+        for beat in beats:
+            beat_time, intensity = beat
+            if abs(elapsed - beat_time) < 0.1:  # 비트 시간 근처 0.1초 내에 있는 경우
+                beat_strength = intensity
                 break
         
-        # 비트로부터의 시간 간격
-        time_since_beat = audio_t - beat_time
-        
-        # 비트 기반 주파수 조정 (템포에 따라)
-        base_freq = config["frequency"]
-        tempo_factor = self.audio_features["tempo"] / 120.0  # 120 BPM 기준
-        freq = base_freq * tempo_factor
-        
-        # 음정에 따른 진폭 조정
-        amp = config["amplitude"] * (0.8 + 0.4 * self.audio_features["energy"])
-        
-        # 비트 강도에 따른 추가 조정
-        amp *= beat_strength
-        
-        # 비트 효과: 비트마다 강한 시작, 감쇠 효과
-        decay = 0.3  # 감쇠 상수
-        beat_amp = amp * np.exp(-time_since_beat / decay)
-        
-        # 기본 파형 계산 (주파수 조정)
-        waveform = config["waveform"]
-        phase = 0.0
-        
-        if waveform == WaveformType.SINE:
-            return beat_amp * np.sin(2 * np.pi * freq * t + phase)
-        elif waveform == WaveformType.BIPHASIC:
-            # 음악 비트에 동기화된 biphasic 파형
-            cycle = (t * freq) % 1.0
-            if cycle < 0.2:
-                return beat_amp
-            elif cycle < 0.3:
-                return 0
-            elif cycle < 0.5:
-                return -beat_amp
-            else:
-                return 0
+        # 비트 강도에 따른 신호 생성 (비트 강도가 높을수록 진폭 증가)
+        if beat_strength > 0:
+            # 비트에 따른 주파수 변조
+            freq_mod = base_freq * (1 + 0.5 * beat_strength)
+            return self.generate_waveform(elapsed, {
+                'amplitude': amplitude * (1 + beat_strength),
+                'frequency': freq_mod,
+                'delay': settings['delay'],
+                'balance': 1.0
+            })
         else:
-            # 다른 파형은 기본 구현 사용
-            basic_wave = super()._generate_waveform(t, {**config, "amplitude": 1.0, "frequency": freq})
-            return beat_amp * basic_wave
+            # 일반 신호 생성
+            return self.generate_waveform(elapsed, settings)
+    
+    def stop_stimulation(self):
+        """
+        자극을 중지합니다.
+        """
+        if not self.running:
+            logger.warning("자극이 실행 중이지 않습니다.")
+            return
+        
+        self.running = False
+        
+        # 스레드가 종료될 때까지 대기
+        if self.stimulation_thread and self.stimulation_thread.is_alive():
+            self.stimulation_thread.join(timeout=1.0)
+        
+        logger.info("자극이 중지되었습니다.")
+    
+    def set_music_mode(self, enabled=True, music_features=None):
+        """
+        음악 모드를 설정합니다.
+        
+        매개변수:
+            enabled (bool): 음악 모드 활성화 여부
+            music_features (dict): 음악 특성 데이터
+        """
+        self.music_mode = enabled
+        
+        if enabled and music_features:
+            self.music_features = music_features
+            logger.info(f"음악 모드가 활성화되었습니다. {len(music_features.get('beats', []))}개의 비트 정보 로드됨.")
+        elif not enabled:
+            logger.info("음악 모드가 비활성화되었습니다.")
+    
+    def extract_music_features(self, audio_data, sample_rate):
+        """
+        오디오 데이터에서 음악 특성을 추출합니다.
+        
+        매개변수:
+            audio_data (numpy.ndarray): 오디오 데이터
+            sample_rate (int): 샘플링 레이트
+            
+        반환값:
+            dict: 추출된 음악 특성
+        """
+        try:
+            # 이 함수는 외부 라이브러리(librosa 등)를 사용하여 구현할 수 있습니다.
+            # 여기서는 간단한 구현만 제공합니다.
+            
+            # 진폭 엔벨로프 계산
+            frame_size = int(sample_rate * 0.025)  # 25ms 프레임
+            hop_size = int(sample_rate * 0.010)    # 10ms 호프
+            
+            # 프레임별 RMS 에너지
+            n_frames = 1 + (len(audio_data) - frame_size) // hop_size
+            energy = []
+            for i in range(n_frames):
+                start = i * hop_size
+                end = start + frame_size
+                if end > len(audio_data):
+                    break
+                frame = audio_data[start:end]
+                rms = np.sqrt(np.mean(frame**2))
+                energy.append(rms)
+            
+            # 에너지 임계값을 사용하여 비트 검출
+            energy = np.array(energy)
+            threshold = np.mean(energy) + 0.5 * np.std(energy)
+            
+            beats = []
+            for i in range(1, len(energy) - 1):
+                if energy[i] > threshold and energy[i] > energy[i-1] and energy[i] > energy[i+1]:
+                    # 비트 시간 및 강도 계산
+                    beat_time = i * hop_size / sample_rate
+                    intensity = min(1.0, (energy[i] - threshold) / threshold)
+                    beats.append((beat_time, intensity))
+            
+            return {
+                'beats': beats,
+                'energy': energy.tolist(),
+                'times': [i * hop_size / sample_rate for i in range(len(energy))],
+                'tempo': len(beats) * 60 / (len(audio_data) / sample_rate) if beats else 0
+            }
+            
+        except Exception as e:
+            logger.error(f"음악 특성 추출 중 오류 발생: {e}")
+            return {'beats': []}
+    
+    def _save_stimulation_results(self):
+        """
+        자극 세션 결과를 저장합니다.
+        """
+        if not self.generated_times:
+            logger.warning("저장할 자극 결과가 없습니다.")
+            return
+        
+        try:
+            # 결과 디렉토리 생성
+            results_dir = "results/stimulation"
+            os.makedirs(results_dir, exist_ok=True)
+            
+            # 결과 데이터 구성
+            result_data = {
+                'session_id': self.session_id,
+                'timestamp': datetime.now().isoformat(),
+                'settings': {
+                    'num_stimulators': self.num_stimulators,
+                    'base_frequency': self.base_frequency,
+                    'waveform_type': self.waveform_type.value,
+                    'phase_type': self.phase_type.value,
+                    'phase_delay': self.phase_delay,
+                    'amplitude': self.amplitude,
+                    'pulse_width': self.pulse_width,
+                    'music_mode': self.music_mode
+                },
+                'stimulator_settings': self.stimulator_settings,
+                'times': self.generated_times
+            }
+            
+            # 신호 데이터 추가
+            for i in range(self.num_stimulators):
+                result_data[f'signals_{i}'] = self.generated_signals[i]
+            
+            # JSON 파일로 저장
+            filename = f"{results_dir}/session_{self.session_id}.json"
+            with open(filename, 'w') as f:
+                json.dump(result_data, f)
+            
+            logger.info(f"자극 결과가 {filename}에 저장되었습니다.")
+            
+            # 시각화 이미지 생성 및 저장
+            self._visualize_stimulation(results_dir)
+            
+        except Exception as e:
+            logger.error(f"자극 결과 저장 중 오류 발생: {e}")
+    
+    def _visualize_stimulation(self, results_dir):
+        """
+        자극 신호를 시각화하여 이미지로 저장합니다.
+        
+        매개변수:
+            results_dir (str): 결과 저장 디렉토리
+        """
+        try:
+            # 시각화 생성
+            plt.figure(figsize=(12, 8))
+            
+            # 각 자극기별 신호 플롯
+            for i in range(self.num_stimulators):
+                plt.subplot(self.num_stimulators, 1, i+1)
+                plt.plot(self.generated_times, self.generated_signals[i])
+                plt.title(f"자극기 {i+1} (위상 지연: {self.stimulator_settings[i]['delay']:.2f}s)")
+                plt.xlabel("시간 (초)")
+                plt.ylabel("신호 강도")
+                plt.grid(True)
+            
+            plt.tight_layout()
+            
+            # 이미지 저장
+            filename = f"{results_dir}/session_{self.session_id}_plot.png"
+            plt.savefig(filename)
+            plt.close()
+            
+            logger.info(f"자극 시각화가 {filename}에 저장되었습니다.")
+            
+        except Exception as e:
+            logger.error(f"자극 시각화 중 오류 발생: {e}")
