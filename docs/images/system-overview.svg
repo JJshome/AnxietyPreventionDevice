@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- 배경 그라데이션 -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e9ecef;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 센서 아이콘 -->
+    <linearGradient id="sensorGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4dabf7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b8fd8;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 분석 아이콘 -->
+    <linearGradient id="analysisGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#63e6be;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#20c997;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 자극기 아이콘 -->
+    <linearGradient id="stimulatorGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffa8a8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff6b6b;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 모바일 아이콘 -->
+    <linearGradient id="mobileGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#da77f2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ae3ec9;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 웹 아이콘 -->
+    <linearGradient id="webGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffd43b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fab005;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 데이터베이스 아이콘 -->
+    <linearGradient id="dbGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a5d8ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#74c0fc;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 화살표 스타일 -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#495057" />
+    </marker>
+    
+    <!-- 점선 화살표 스타일 -->
+    <marker id="dashArrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#868e96" />
+    </marker>
+    
+    <!-- 파동 애니메이션 -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- 배경 -->
+  <rect width="800" height="600" fill="url(#bgGradient)" rx="15" ry="15" />
+  
+  <!-- 제목 -->
+  <text x="400" y="50" font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle" fill="#212529">불안장애 예방 시스템</text>
+  <text x="400" y="80" font-family="Arial, sans-serif" font-size="18" text-anchor="middle" fill="#495057">Anxiety Prevention Device</text>
+  
+  <!-- 웨어러블 ECG 센서 -->
+  <g transform="translate(100, 180)">
+    <rect width="140" height="80" rx="10" ry="10" fill="url(#sensorGradient)" filter="drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.2))" />
+    
+    <!-- 센서 아이콘 -->
+    <g transform="translate(30, 25)" filter="url(#glow)">
+      <circle cx="0" cy="0" r="15" fill="#fff" opacity="0.9" />
+      <path d="M-8,0 L-3,0 L-1,-7 L1,7 L3,0 L8,0" stroke="#4dabf7" stroke-width="2" fill="none">
+        <animate attributeName="stroke-width" values="2;3;2" dur="2s" repeatCount="indefinite" />
+      </path>
+    </g>
+    
+    <text x="70" y="35" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">웨어러블</text>
+    <text x="70" y="55" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">심전도 센서</text>
+  </g>
+  
+  <!-- HRV 분석 모듈 -->
+  <g transform="translate(330, 180)">
+    <rect width="140" height="80" rx="10" ry="10" fill="url(#analysisGradient)" filter="drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.2))" />
+    
+    <!-- 분석 아이콘 -->
+    <g transform="translate(30, 40)">
+      <rect x="-10" y="-5" width="5" height="10" fill="#fff" opacity="0.9">
+        <animate attributeName="height" values="10;20;10" dur="3s" repeatCount="indefinite" />
+      </rect>
+      <rect x="-3" y="-10" width="5" height="20" fill="#fff" opacity="0.9">
+        <animate attributeName="height" values="20;15;20" dur="2.3s" repeatCount="indefinite" />
+      </rect>
+      <rect x="4" y="-15" width="5" height="30" fill="#fff" opacity="0.9">
+        <animate attributeName="height" values="30;20;30" dur="2.7s" repeatCount="indefinite" />
+      </rect>
+      <rect x="11" y="-7" width="5" height="14" fill="#fff" opacity="0.9">
+        <animate attributeName="height" values="14;25;14" dur="2.5s" repeatCount="indefinite" />
+      </rect>
+    </g>
+    
+    <text x="70" y="35" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">HRV 분석 및</text>
+    <text x="70" y="55" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">예측 모듈</text>
+  </g>
+  
+  <!-- 두개전기자극 생성 -->
+  <g transform="translate(560, 180)">
+    <rect width="140" height="80" rx="10" ry="10" fill="url(#stimulatorGradient)" filter="drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.2))" />
+    
+    <!-- 자극 아이콘 -->
+    <g transform="translate(30, 40)">
+      <path d="M-10,0 L10,0 M0,-10 L0,10" stroke="#fff" stroke-width="3" opacity="0.9">
+        <animate attributeName="stroke-width" values="3;4;3" dur="0.5s" repeatCount="indefinite" />
+      </path>
+      <circle cx="0" cy="0" r="15" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.6">
+        <animate attributeName="r" values="15;20;15" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2s" repeatCount="indefinite" />
+      </circle>
+    </g>
+    
+    <text x="70" y="35" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">두개전기자극</text>
+    <text x="70" y="55" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">신호 생성</text>
+  </g>
+  
+  <!-- 모바일 앱 -->
+  <g transform="translate(100, 350)">
+    <rect width="140" height="80" rx="10" ry="10" fill="url(#mobileGradient)" filter="drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.2))" />
+    
+    <!-- 모바일 아이콘 -->
+    <g transform="translate(30, 40)">
+      <rect x="-7" y="-15" width="14" height="30" rx="2" ry="2" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.9" />
+      <line x1="-7" y1="-8" x2="7" y2="-8" stroke="#fff" stroke-width="1.5" opacity="0.9" />
+      <circle cx="0" cy="10" r="2" fill="#fff" opacity="0.9" />
+    </g>
+    
+    <text x="70" y="35" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">모바일</text>
+    <text x="70" y="55" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">애플리케이션</text>
+  </g>
+  
+  <!-- 데이터베이스 -->
+  <g transform="translate(330, 350)">
+    <rect width="140" height="80" rx="10" ry="10" fill="url(#dbGradient)" filter="drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.2))" />
+    
+    <!-- 데이터베이스 아이콘 -->
+    <g transform="translate(30, 40)">
+      <path d="M-10,-10 C-10,-15 10,-15 10,-10 L10,5 C10,10 -10,10 -10,5 Z" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.9" />
+      <path d="M-10,-10 C-10,-5 10,-5 10,-10" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.9" />
+      <path d="M-10,-3 C-10,2 10,2 10,-3" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.9" />
+    </g>
+    
+    <text x="70" y="35" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">데이터베이스</text>
+    <text x="70" y="55" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff"></text>
+  </g>
+  
+  <!-- 저주파 자극기 -->
+  <g transform="translate(560, 350)">
+    <rect width="140" height="80" rx="10" ry="10" fill="url(#stimulatorGradient)" filter="drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.2))" />
+    
+    <!-- 자극기 아이콘 -->
+    <g transform="translate(30, 40)">
+      <g transform="rotate(45)">
+        <path d="M-8,-8 L8,8 M-8,8 L8,-8" stroke="#fff" stroke-width="2" opacity="0.9">
+          <animate attributeName="stroke-width" values="2;3;2" dur="1.5s" repeatCount="indefinite" />
+        </path>
+      </g>
+      <circle cx="0" cy="0" r="12" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.6">
+        <animate attributeName="r" values="12;15;12" dur="1.5s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.6;0.3;0.6" dur="1.5s" repeatCount="indefinite" />
+      </circle>
+    </g>
+    
+    <text x="70" y="35" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">저주파 자극기</text>
+    <text x="70" y="55" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">(2+)</text>
+  </g>
+  
+  <!-- 웹 대시보드 -->
+  <g transform="translate(100, 500)">
+    <rect width="140" height="80" rx="10" ry="10" fill="url(#webGradient)" filter="drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.2))" />
+    
+    <!-- 웹 아이콘 -->
+    <g transform="translate(30, 40)">
+      <rect x="-12" y="-10" width="24" height="20" rx="2" ry="2" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.9" />
+      <line x1="-12" y1="-4" x2="12" y2="-4" stroke="#fff" stroke-width="1.5" opacity="0.9" />
+      <circle cx="-7" cy="-7" r="1" fill="#fff" opacity="0.9" />
+      <circle cx="-3" cy="-7" r="1" fill="#fff" opacity="0.9" />
+      <circle cx="1" cy="-7" r="1" fill="#fff" opacity="0.9" />
+    </g>
+    
+    <text x="70" y="35" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">웹 대시보드</text>
+    <text x="70" y="55" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">서버</text>
+  </g>
+  
+  <!-- 연결선 -->
+  <!-- 센서 -> HRV 분석 -->
+  <line x1="240" y1="220" x2="330" y2="220" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- HRV 분석 -> 자극 생성 -->
+  <line x1="470" y1="220" x2="560" y2="220" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- 자극 생성 -> 자극기 -->
+  <line x1="630" y1="260" x2="630" y2="350" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- 자극기 -> 데이터베이스 -->
+  <line x1="560" y1="390" x2="470" y2="390" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- 데이터베이스 -> 모바일앱 -->
+  <line x1="330" y1="390" x2="240" y2="390" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- 데이터베이스 -> 웹 대시보드 -->
+  <line x1="380" y1="430" x2="380" y2="500" stroke="#868e96" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#dashArrowhead)" />
+  <line x1="380" y1="540" x2="240" y2="540" stroke="#868e96" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#dashArrowhead)" />
+  
+  <!-- 모바일앱 -> 센서 -->
+  <line x1="170" y1="350" x2="170" y2="260" stroke="#868e96" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#dashArrowhead)" />
+  
+  <!-- 하단 캡션 -->
+  <text x="400" y="570" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#495057">* 실선: 주요 데이터 흐름  |  점선: 제어 신호 및 옵션 데이터 흐름</text>
+  
+  <!-- 애니메이션 효과 -->
+  <g>
+    <circle cx="400" cy="300" r="250" fill="none" stroke="#f8f9fa" stroke-width="2" opacity="0.1">
+      <animate attributeName="r" values="250;260;250" dur="10s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.1;0.05;0.1" dur="10s" repeatCount="indefinite" />
+    </circle>
+    <circle cx="400" cy="300" r="200" fill="none" stroke="#f8f9fa" stroke-width="2" opacity="0.1">
+      <animate attributeName="r" values="200;210;200" dur="12s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.1;0.05;0.1" dur="12s" repeatCount="indefinite" />
+    </circle>
+  </g>
+</svg>
