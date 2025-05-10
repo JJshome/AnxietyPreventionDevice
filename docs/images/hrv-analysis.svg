@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- 배경 그라데이션 -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e9ecef;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- ECG 파형 배경 그라데이션 -->
+    <linearGradient id="ecgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4c6ef5;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#4c6ef5;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- HRV 분석 결과 그라데이션 -->
+    <linearGradient id="hrvGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#51cf66;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#51cf66;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- 파노그램 그라데이션 -->
+    <linearGradient id="psdGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff922b;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#ff922b;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- 불안 수준 배경 그라데이션 -->
+    <linearGradient id="anxietyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f783ac;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#f783ac;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- 자극 파형 그라데이션 -->
+    <linearGradient id="stimGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#9775fa;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#9775fa;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- 화살표 -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#495057" />
+    </marker>
+    
+    <!-- 애니메이션 ECG 파형을 위한 경로 -->
+    <path id="ecgPath" d="M0,50 L10,50 L15,20 L20,80 L25,50 L30,50 L50,50 L55,20 L60,80 L65,50 L70,50 L90,50 L95,20 L100,80 L105,50 L110,50 L130,50 L135,20 L140,80 L145,50 L150,50 L170,50 L175,20 L180,80 L185,50 L190,50" />
+    
+    <!-- 불안 점수 게이지 -->
+    <linearGradient id="anxietyMeter" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#40c057;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#fab005;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fa5252;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 배경 -->
+  <rect width="800" height="400" fill="url(#bgGradient)" rx="15" ry="15" />
+  
+  <!-- 제목 -->
+  <text x="400" y="30" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#212529">심박변이도(HRV) 분석 과정</text>
+  
+  <!-- ECG 신호 패널 -->
+  <g transform="translate(70, 80)">
+    <!-- 패널 배경 -->
+    <rect width="150" height="100" rx="10" ry="10" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1" />
+    
+    <!-- 제목 -->
+    <text x="75" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">ECG 신호</text>
+    
+    <!-- ECG 파형 배경 -->
+    <rect x="10" y="35" width="130" height="50" rx="5" ry="5" fill="url(#ecgGradient)" />
+    
+    <!-- ECG 파형 -->
+    <path d="M10,60 L20,60 L25,40 L30,80 L35,60 L45,60 L55,60 L60,40 L65,80 L70,60 L80,60 L90,60 L95,40 L100,80 L105,60 L115,60 L125,60 L130,40 L135,80 L140,60" fill="none" stroke="#4c6ef5" stroke-width="2">
+      <animate attributeName="d" values="M10,60 L20,60 L25,40 L30,80 L35,60 L45,60 L55,60 L60,40 L65,80 L70,60 L80,60 L90,60 L95,40 L100,80 L105,60 L115,60 L125,60 L130,40 L135,80 L140,60;
+                                        M10,60 L20,60 L25,45 L30,75 L35,60 L45,60 L55,60 L60,45 L65,75 L70,60 L80,60 L90,60 L95,45 L100,75 L105,60 L115,60 L125,60 L130,45 L135,75 L140,60;
+                                        M10,60 L20,60 L25,40 L30,80 L35,60 L45,60 L55,60 L60,40 L65,80 L70,60 L80,60 L90,60 L95,40 L100,80 L105,60 L115,60 L125,60 L130,40 L135,80 L140,60" 
+                             dur="3s" repeatCount="indefinite" />
+    </path>
+  </g>
+  
+  <!-- HRV 분석 패널 -->
+  <g transform="translate(325, 80)">
+    <!-- 패널 배경 -->
+    <rect width="150" height="100" rx="10" ry="10" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1" />
+    
+    <!-- 제목 -->
+    <text x="75" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">RR 간격 추출</text>
+    
+    <!-- HRV 파형 배경 -->
+    <rect x="10" y="35" width="130" height="50" rx="5" ry="5" fill="url(#hrvGradient)" />
+    
+    <!-- RR 간격 막대 -->
+    <g>
+      <line x1="15" y1="70" x2="15" y2="50" stroke="#51cf66" stroke-width="2" />
+      <line x1="45" y1="70" x2="45" y2="45" stroke="#51cf66" stroke-width="2" />
+      <line x1="70" y1="70" x2="70" y2="60" stroke="#51cf66" stroke-width="2" />
+      <line x1="100" y1="70" x2="100" y2="40" stroke="#51cf66" stroke-width="2" />
+      <line x1="135" y1="70" x2="135" y2="55" stroke="#51cf66" stroke-width="2" />
+      
+      <!-- 애니메이션 -->
+      <line x1="15" y1="80" x2="45" y2="80" stroke="#51cf66" stroke-width="1" stroke-dasharray="2,2">
+        <animate attributeName="y1" values="80;75;80" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="y2" values="80;75;80" dur="2s" repeatCount="indefinite" />
+      </line>
+      <line x1="45" y1="80" x2="70" y2="80" stroke="#51cf66" stroke-width="1" stroke-dasharray="2,2">
+        <animate attributeName="y1" values="80;75;80" dur="2.5s" repeatCount="indefinite" />
+        <animate attributeName="y2" values="80;75;80" dur="2.5s" repeatCount="indefinite" />
+      </line>
+      <line x1="70" y1="80" x2="100" y2="80" stroke="#51cf66" stroke-width="1" stroke-dasharray="2,2">
+        <animate attributeName="y1" values="80;75;80" dur="2.2s" repeatCount="indefinite" />
+        <animate attributeName="y2" values="80;75;80" dur="2.2s" repeatCount="indefinite" />
+      </line>
+      <line x1="100" y1="80" x2="135" y2="80" stroke="#51cf66" stroke-width="1" stroke-dasharray="2,2">
+        <animate attributeName="y1" values="80;75;80" dur="1.8s" repeatCount="indefinite" />
+        <animate attributeName="y2" values="80;75;80" dur="1.8s" repeatCount="indefinite" />
+      </line>
+    </g>
+  </g>
+  
+  <!-- 주파수 영역 분석 패널 -->
+  <g transform="translate(580, 80)">
+    <!-- 패널 배경 -->
+    <rect width="150" height="100" rx="10" ry="10" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1" />
+    
+    <!-- 제목 -->
+    <text x="75" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">스펙트럼 분석</text>
+    
+    <!-- PSD 그래프 배경 -->
+    <rect x="10" y="35" width="130" height="50" rx="5" ry="5" fill="url(#psdGradient)" />
+    
+    <!-- PSD 그래프 막대 -->
+    <g>
+      <rect x="20" y="65" width="10" height="15" fill="#ff922b">
+        <animate attributeName="height" values="15;20;15" dur="3s" repeatCount="indefinite" />
+        <animate attributeName="y" values="65;60;65" dur="3s" repeatCount="indefinite" />
+      </rect>
+      <rect x="40" y="50" width="10" height="30" fill="#ff922b">
+        <animate attributeName="height" values="30;25;30" dur="2.5s" repeatCount="indefinite" />
+        <animate attributeName="y" values="50;55;50" dur="2.5s" repeatCount="indefinite" />
+      </rect>
+      <rect x="60" y="40" width="10" height="40" fill="#ff922b">
+        <animate attributeName="height" values="40;45;40" dur="2.8s" repeatCount="indefinite" />
+        <animate attributeName="y" values="40;35;40" dur="2.8s" repeatCount="indefinite" />
+      </rect>
+      <rect x="80" y="55" width="10" height="25" fill="#ff922b">
+        <animate attributeName="height" values="25;30;25" dur="3.2s" repeatCount="indefinite" />
+        <animate attributeName="y" values="55;50;55" dur="3.2s" repeatCount="indefinite" />
+      </rect>
+      <rect x="100" y="70" width="10" height="10" fill="#ff922b">
+        <animate attributeName="height" values="10;15;10" dur="3.5s" repeatCount="indefinite" />
+        <animate attributeName="y" values="70;65;70" dur="3.5s" repeatCount="indefinite" />
+      </rect>
+      <rect x="120" y="75" width="10" height="5" fill="#ff922b">
+        <animate attributeName="height" values="5;8;5" dur="2.7s" repeatCount="indefinite" />
+        <animate attributeName="y" values="75;72;75" dur="2.7s" repeatCount="indefinite" />
+      </rect>
+    </g>
+    
+    <!-- 라벨 -->
+    <text x="25" y="90" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="#495057">VLF</text>
+    <text x="75" y="90" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="#495057">LF</text>
+    <text x="115" y="90" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="#495057">HF</text>
+  </g>
+  
+  <!-- 불안 점수 패널 -->
+  <g transform="translate(200, 240)">
+    <!-- 패널 배경 -->
+    <rect width="180" height="100" rx="10" ry="10" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1" />
+    
+    <!-- 제목 -->
+    <text x="90" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">불안 수준 예측</text>
+    
+    <!-- 불안 점수 배경 -->
+    <rect x="10" y="35" width="160" height="50" rx="5" ry="5" fill="url(#anxietyGradient)" />
+    
+    <!-- 불안 점수 게이지 -->
+    <rect x="20" y="50" width="140" height="20" rx="10" ry="10" fill="#e9ecef" stroke="#ced4da" stroke-width="1" />
+    <rect x="20" y="50" width="84" height="20" rx="10" ry="10" fill="url(#anxietyMeter)">
+      <animate attributeName="width" values="28;84;56;84" dur="5s" repeatCount="indefinite" />
+    </rect>
+    
+    <!-- 게이지 라벨 -->
+    <text x="90" y="85" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">
+      <tspan fill="#fa5252">중간 위험</tspan>
+      <animate attributeName="textContent" values="낮음;중간 위험;중간;중간 위험" dur="5s" repeatCount="indefinite" />
+      <animate attributeName="fill" values="#40c057;#fa5252;#fab005;#fa5252" dur="5s" repeatCount="indefinite" />
+    </text>
+  </g>
+  
+  <!-- 자극 제어 패널 -->
+  <g transform="translate(470, 240)">
+    <!-- 패널 배경 -->
+    <rect width="180" height="100" rx="10" ry="10" fill="#f8f9fa" stroke="#dee2e6" stroke-width="1" />
+    
+    <!-- 제목 -->
+    <text x="90" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">저주파 자극 제어</text>
+    
+    <!-- 자극 파형 배경 -->
+    <rect x="10" y="35" width="160" height="50" rx="5" ry="5" fill="url(#stimGradient)" />
+    
+    <!-- 자극 제어 파형 -->
+    <g>
+      <!-- 첫 번째 자극 파형 -->
+      <path d="M20,60 L25,60 L25,50 L30,50 L30,60 L35,60 L35,70 L40,70 L40,60 L45,60" fill="none" stroke="#9775fa" stroke-width="2">
+        <animate attributeName="d" values="M20,60 L25,60 L25,50 L30,50 L30,60 L35,60 L35,70 L40,70 L40,60 L45,60;
+                                         M20,60 L25,60 L25,45 L30,45 L30,60 L35,60 L35,75 L40,75 L40,60 L45,60;
+                                         M20,60 L25,60 L25,50 L30,50 L30,60 L35,60 L35,70 L40,70 L40,60 L45,60" 
+                              dur="2s" repeatCount="indefinite" />
+      </path>
+      
+      <!-- 두 번째 자극 파형 -->
+      <path d="M60,60 L65,60 L65,50 L70,50 L70,60 L75,60 L75,70 L80,70 L80,60 L85,60" fill="none" stroke="#9775fa" stroke-width="2" stroke-dasharray="3,1">
+        <animate attributeName="d" values="M60,60 L65,60 L65,50 L70,50 L70,60 L75,60 L75,70 L80,70 L80,60 L85,60;
+                                         M60,60 L65,60 L65,45 L70,45 L70,60 L75,60 L75,75 L80,75 L80,60 L85,60;
+                                         M60,60 L65,60 L65,50 L70,50 L70,60 L75,60 L75,70 L80,70 L80,60 L85,60" 
+                              dur="2s" repeatCount="indefinite" begin="0.5s" />
+      </path>
+      
+      <!-- 세 번째 자극 파형 -->
+      <path d="M100,60 L105,60 L105,50 L110,50 L110,60 L115,60 L115,70 L120,70 L120,60 L125,60" fill="none" stroke="#9775fa" stroke-width="2" stroke-dasharray="2,1">
+        <animate attributeName="d" values="M100,60 L105,60 L105,50 L110,50 L110,60 L115,60 L115,70 L120,70 L120,60 L125,60;
+                                          M100,60 L105,60 L105,45 L110,45 L110,60 L115,60 L115,75 L120,75 L120,60 L125,60;
+                                          M100,60 L105,60 L105,50 L110,50 L110,60 L115,60 L115,70 L120,70 L120,60 L125,60" 
+                               dur="2s" repeatCount="indefinite" begin="1s" />
+      </path>
+      
+      <!-- 왕복 포인터 -->
+      <circle cx="80" cy="40" r="3" fill="#9775fa">
+        <animateMotion path="M0,0 L60,0 L0,0" dur="4s" repeatCount="indefinite" />
+      </circle>
+      
+      <!-- 강도 제어 노브 -->
+      <circle cx="150" cy="60" r="8" fill="#e9ecef" stroke="#9775fa" stroke-width="2">
+        <animate attributeName="cy" values="60;50;70;60" dur="6s" repeatCount="indefinite" />
+      </circle>
+    </g>
+    
+    <!-- 제어 라벨 -->
+    <text x="90" y="95" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#495057">스테레오 자극 모드</text>
+  </g>
+  
+  <!-- 프로세스 화살표 -->
+  <!-- ECG -> HRV -->
+  <line x1="225" y1="130" x2="320" y2="130" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- HRV -> 주파수 -->
+  <line x1="480" y1="130" x2="575" y2="130" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- 주파수/HRV -> 불안 예측 -->
+  <path d="M400,180 L400,215 L290,215 L290,240" stroke="#495057" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <path d="M650,180 L650,215 L290,215" stroke="#495057" stroke-width="2" fill="none" />
+  
+  <!-- 불안 예측 -> 자극 제어 -->
+  <line x1="385" y1="290" x2="465" y2="290" stroke="#495057" stroke-width="2" marker-end="url(#arrowhead)" />
+  
+  <!-- 하단 설명 -->
+  <text x="400" y="370" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#495057">© 2023 JJshome - 특허기술 기반 불안장애 예방 시스템</text>
+  
+  <!-- 분석 척도 라벨 -->
+  <g transform="translate(20, 200)">
+    <text font-family="Arial, sans-serif" font-size="11" fill="#495057">
+      <tspan x="0" y="0">HRV 지표:</tspan>
+      <tspan x="15" y="20">- LF/HF 비율</tspan>
+      <tspan x="15" y="38">- RMSSD</tspan>
+      <tspan x="15" y="56">- SDNN</tspan>
+      <tspan x="15" y="74">- pNN50</tspan>
+    </text>
+  </g>
+  
+  <g transform="translate(680, 200)">
+    <text font-family="Arial, sans-serif" font-size="11" fill="#495057">
+      <tspan x="0" y="0">자극 변수:</tspan>
+      <tspan x="15" y="20">- 강도</tspan>
+      <tspan x="15" y="38">- 위상차</tspan>
+      <tspan x="15" y="56">- 주파수</tspan>
+      <tspan x="15" y="74">- 펄스폭</tspan>
+    </text>
+  </g>
+</svg>
