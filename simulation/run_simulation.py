@@ -1,819 +1,1322 @@
-#!/usr/bin/env python3
 """
-Anxiety Prevention Device - Integrated Simulation Environment
+불안장애 예방 시스템 시뮬레이션 실행기
 
-This script provides a complete simulation environment for the anxiety prevention system
-based on the patents 10-2022-0007209 ("불안장애 예방장치") and 10-2459338 ("저주파 자극기 제어장치").
-
-The simulation integrates:
-1. ECG signal generation and HRV measurement
-2. Real-time HRV analysis and anxiety prediction
-3. Cranial electrotherapy stimulation control with multiple devices
-4. Visual interface showing the complete workflow
-
-Usage:
-    python run_simulation.py [--headless]
-    
-    --headless: Run in headless mode (no GUI)
+ECG 센서와 저주파 자극기를 시뮬레이션하여 불안장애 예방 시스템을 테스트하는 모듈입니다.
 """
 
-import os
 import sys
+import os
 import time
-import argparse
 import threading
 import logging
+import argparse
 import numpy as np
-import pandas as pd
+import matplotlib
 import json
+import tkinter as tk
+from tkinter import ttk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+from enum import Enum
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional
 
-# Add parent directory to path for module imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# 상위 디렉토리를 모듈 검색 경로에 추가
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import simulation modules
-from simulation.ecg_simulator import ECGSimulator
-from simulation.stimulator_simulator import StimulatorSimulator
+# 시뮬레이터 모듈 임포트
+from simulation.ecg_simulator import ECGSimulator, ECGPatternType
+from simulation.stimulator_simulator import StimulatorSimulator, WaveformType, PhaseType
 
-# Import core modules
-from src.hrv_analyzer.hrv_analysis import HRVAnalyzer
-from src.hrv_analyzer.anxiety_predictor import AnxietyPredictor
-from src.stimulation_controller.cranial_stimulator import CranialStimulator, WaveformType
+# 시스템 모듈 임포트
+from src.anxiety_prevention_controller import AnxietyPreventionController, SystemState, OperationMode
+from src.ecg_sensor.ecg_interface import ECGInterface
+from src.ecg_sensor.data_processor import ECGDataProcessor
+from src.hrv_analyzer.hrv_anxiety_predictor import HRVAnxietyPredictor
+from src.stimulation_controller.stereo_stimulator import StereoStimulator
 
-# GUI imports
-try:
-    from PyQt5 import QtWidgets, QtCore, QtGui
-    import pyqtgraph as pg
-    GUI_AVAILABLE = True
-except ImportError:
-    GUI_AVAILABLE = False
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('simulation.log')
-    ]
-)
 logger = logging.getLogger(__name__)
 
-class SimulationController:
+
+class SimulatedECGInterface(ECGInterface):
     """
-    Main controller for the anxiety prevention device simulation.
+    ECG 시뮬레이터를 사용하는 ECG 인터페이스 구현
     
-    This class integrates all components of the system and manages the simulation flow.
+    실제 ECG 센서 대신 시뮬레이터를 사용하여 ECGInterface를 구현합니다.
     """
     
-    def __init__(self, headless: bool = False):
+    def __init__(self, ecg_simulator, sampling_rate=256, buffer_size=None, bluetooth_enabled=False):
         """
-        Initialize the simulation controller.
+        SimulatedECGInterface 초기화
         
-        Args:
-            headless: Whether to run in headless mode (no GUI).
+        매개변수:
+            ecg_simulator (ECGSimulator): ECG 시뮬레이터 인스턴스
+            sampling_rate (int): 샘플링 레이트
+            buffer_size (int): 버퍼 크기
+            bluetooth_enabled (bool): 블루투스 활성화 여부 (시뮬레이션에서는 무시됨)
+        """
+        super().__init__(sampling_rate, buffer_size, bluetooth_enabled)
+        self.simulator = ecg_simulator
+        self.data_buffer = []
+        self.connected = False
+        
+        # 데이터 리스너 등록
+        self.simulator.add_listener(self._on_ecg_data)
+    
+    def _on_ecg_data(self, data):
+        """
+        ECG 시뮬레이터에서 데이터 수신 시 호출되는 콜백
+        
+        매개변수:
+            data (dict): ECG 데이터
+        """
+        if self.connected:
+            # 데이터 버퍼에 추가
+            self.data_buffer.extend(data["data"])
+            
+            # 버퍼 사이즈 제한
+            if self.buffer_size and len(self.data_buffer) > self.buffer_size:
+                self.data_buffer = self.data_buffer[-self.buffer_size:]
+    
+    def connect(self):
+        """
+        ECG 센서(시뮬레이터) 연결
+        
+        반환값:
+            bool: 성공 여부
+        """
+        self.connected = True
+        self.simulator.start()
+        logger.info("시뮬레이션된 ECG 센서가 연결되었습니다.")
+        return True
+    
+    def disconnect(self):
+        """
+        ECG 센서(시뮬레이터) 연결 해제
+        
+        반환값:
+            bool: 성공 여부
+        """
+        self.connected = False
+        self.simulator.stop()
+        logger.info("시뮬레이션된 ECG 센서 연결이 해제되었습니다.")
+        return True
+    
+    def is_connected(self):
+        """
+        ECG 센서(시뮬레이터) 연결 상태 확인
+        
+        반환값:
+            bool: 연결 여부
+        """
+        return self.connected
+    
+    def read_data(self):
+        """
+        버퍼에서 데이터 읽기
+        
+        반환값:
+            list: ECG 데이터
+        """
+        if not self.connected or not self.data_buffer:
+            return []
+        
+        # 현재 버퍼 복사 후 비움
+        data = self.data_buffer.copy()
+        self.data_buffer = []
+        
+        return data
+
+
+class SimulatedStereoStimulator(StereoStimulator):
+    """
+    자극기 시뮬레이터를 사용하는 StereoStimulator 구현
+    
+    실제 저주파 자극기 대신 시뮬레이터를 사용하여 StereoStimulator를 구현합니다.
+    """
+    
+    def __init__(self, stimulator_simulator, num_stimulators=2, base_frequency=10, 
+                 waveform_type=WaveformType.SINE, phase_type=PhaseType.BIPHASIC, 
+                 phase_delay=0.5, amplitude=0.5):
+        """
+        SimulatedStereoStimulator 초기화
+        
+        매개변수:
+            stimulator_simulator (StimulatorSimulator): 자극기 시뮬레이터 인스턴스
+            num_stimulators (int): 자극기 수
+            base_frequency (float): 기본 주파수
+            waveform_type (WaveformType): 파형 유형
+            phase_type (PhaseType): 위상 유형
+            phase_delay (float): 위상 지연
+            amplitude (float): 진폭
+        """
+        super().__init__(num_stimulators, base_frequency, waveform_type, phase_type, phase_delay, amplitude)
+        self.simulator = stimulator_simulator
+        
+        # 시뮬레이터에 설정 적용
+        self.simulator.set_frequency(base_frequency)
+        self.simulator.set_waveform(waveform_type.value, phase_type.value)
+        self.simulator.set_phase_delay(phase_delay)
+        self.simulator.set_amplitude(amplitude)
+    
+    def start_stimulation(self, params=None):
+        """
+        자극 시작
+        
+        매개변수:
+            params (dict): 자극 매개변수
+            
+        반환값:
+            bool: 성공 여부
+        """
+        # 매개변수 적용
+        if params:
+            if 'frequency' in params:
+                self.simulator.set_frequency(params['frequency'])
+            if 'waveform_type' in params:
+                self.simulator.set_waveform(params['waveform_type'])
+            if 'phase_type' in params:
+                self.simulator.set_waveform(self.simulator.waveform_type, params['phase_type'])
+            if 'amplitude' in params:
+                self.simulator.set_amplitude(params['amplitude'])
+            if 'phase_delay' in params:
+                self.simulator.set_phase_delay(params['phase_delay'])
+            if 'duration' in params:
+                duration = params['duration']
+            else:
+                duration = 180  # 기본 지속 시간 3분
+        else:
+            duration = 180
+        
+        # 자극 시작
+        session_id = self.simulator.start_stimulation(duration=duration)
+        return bool(session_id)
+    
+    def stop_stimulation(self):
+        """
+        자극 중지
+        
+        반환값:
+            bool: 성공 여부
+        """
+        return self.simulator.stop_stimulation()
+    
+    def set_phase_delay(self, delay):
+        """
+        위상 지연 설정
+        
+        매개변수:
+            delay (float): 위상 지연
+            
+        반환값:
+            bool: 성공 여부
+        """
+        self.phase_delay = delay
+        self.simulator.set_phase_delay(delay)
+        return True
+    
+    def set_balance(self, balance_params):
+        """
+        밸런스 설정
+        
+        매개변수:
+            balance_params (dict): 밸런스 매개변수
+            
+        반환값:
+            bool: 성공 여부
+        """
+        self.simulator.set_balance(balance_params)
+        return True
+    
+    def register_stimulator(self, stimulator_id, stimulator_interface):
+        """
+        자극기 등록 (시뮬레이션에서는 사용하지 않음)
+        
+        매개변수:
+            stimulator_id (str): 자극기 ID
+            stimulator_interface: 자극기 인터페이스
+            
+        반환값:
+            bool: 성공 여부
+        """
+        logger.info(f"시뮬레이션 모드에서는 자극기 등록이 무시됩니다: {stimulator_id}")
+        return True
+    
+    def get_stimulators(self):
+        """
+        등록된 자극기 목록 반환
+        
+        반환값:
+            list: 자극기 ID 목록
+        """
+        return [f"stim_{i+1}" for i in range(self.num_stimulators)]
+    
+    def get_stimulator_status(self, stimulator_id):
+        """
+        자극기 상태 반환
+        
+        매개변수:
+            stimulator_id (str): 자극기 ID
+            
+        반환값:
+            dict: 자극기 상태
+        """
+        for i, stim_id in enumerate(self.get_stimulators()):
+            if stim_id == stimulator_id:
+                return {
+                    "id": stimulator_id,
+                    "connected": True,
+                    "battery": 80,
+                    "enabled": self.simulator.stimulator_settings[i]['enabled'],
+                    "balance": self.simulator.stimulator_settings[i]['balance'],
+                    "amplitude": self.simulator.stimulator_settings[i]['amplitude'],
+                    "delay": self.simulator.stimulator_settings[i]['delay']
+                }
+        return None
+
+
+class SimulationApp:
+    """
+    불안장애 예방 시스템 시뮬레이션 애플리케이션
+    
+    ECG 시뮬레이터, 자극기 시뮬레이터, 불안장애 예방 컨트롤러를 통합하여
+    전체 시스템을 시뮬레이션하는 GUI 애플리케이션을 제공합니다.
+    """
+    
+    def __init__(self, root=None, headless=False):
+        """
+        SimulationApp 초기화
+        
+        매개변수:
+            root (tk.Tk): Tkinter 루트 윈도우 (헤드리스 모드에서는 None)
+            headless (bool): 헤드리스 모드 여부
         """
         self.headless = headless
-        self.running = False
-        self.pause = False
-        
-        # Initialize simulation components
-        self.ecg_simulator = ECGSimulator()
-        self.hrv_analyzer = HRVAnalyzer()
-        self.anxiety_predictor = AnxietyPredictor()
-        self.cranial_stimulator = CranialStimulator()
-        
-        # Add stimulator devices
-        self.stimulator1 = StimulatorSimulator(device_id="STIM001", name="Left Stimulator")
-        self.stimulator2 = StimulatorSimulator(device_id="STIM002", name="Right Stimulator")
-        
-        self.cranial_stimulator.add_device("STIM001", self.stimulator1)
-        self.cranial_stimulator.add_device("STIM002", self.stimulator2)
-        
-        # Connect to stimulators
-        self.cranial_stimulator.connect_device("STIM001")
-        self.cranial_stimulator.connect_device("STIM002")
-        
-        # Initialize timers
-        self.ecg_timer = None
-        self.hrv_timer = None
-        self.anxiety_timer = None
-        
-        # Initialize data storage
-        self.ecg_data = []
-        self.hrv_data = []
-        self.anxiety_data = []
-        
-        # Initialize simulation parameters
-        self.simulation_speed = 1.0  # Real-time simulation by default
-        self.current_anxiety_level = 0
-        
-        # Initialize GUI if not in headless mode
-        self.app = None
-        self.main_window = None
-        
-        if not headless and GUI_AVAILABLE:
-            self._setup_gui()
-    
-    def _setup_gui(self):
-        """Set up the graphical user interface."""
-        self.app = QtWidgets.QApplication([])
-        self.main_window = QtWidgets.QMainWindow()
-        self.main_window.setWindowTitle("Anxiety Prevention Device Simulation")
-        self.main_window.resize(1200, 800)
-        
-        # Create central widget and layout
-        central_widget = QtWidgets.QWidget()
-        main_layout = QtWidgets.QVBoxLayout()
-        central_widget.setLayout(main_layout)
-        self.main_window.setCentralWidget(central_widget)
-        
-        # Add control panel
-        control_panel = QtWidgets.QHBoxLayout()
-        
-        # Start/Stop button
-        self.start_stop_button = QtWidgets.QPushButton("Start Simulation")
-        self.start_stop_button.clicked.connect(self._toggle_simulation)
-        control_panel.addWidget(self.start_stop_button)
-        
-        # Pause/Resume button
-        self.pause_button = QtWidgets.QPushButton("Pause")
-        self.pause_button.clicked.connect(self._toggle_pause)
-        self.pause_button.setEnabled(False)
-        control_panel.addWidget(self.pause_button)
-        
-        # Speed control
-        control_panel.addWidget(QtWidgets.QLabel("Simulation Speed:"))
-        self.speed_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.speed_slider.setMinimum(10)
-        self.speed_slider.setMaximum(500)
-        self.speed_slider.setValue(100)
-        self.speed_slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
-        self.speed_slider.setTickInterval(50)
-        self.speed_slider.valueChanged.connect(self._update_simulation_speed)
-        control_panel.addWidget(self.speed_slider)
-        
-        # Speed label
-        self.speed_label = QtWidgets.QLabel("1.0x")
-        control_panel.addWidget(self.speed_label)
-        
-        # Anxiety level control
-        control_panel.addWidget(QtWidgets.QLabel("Simulated Anxiety:"))
-        self.anxiety_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.anxiety_slider.setMinimum(0)
-        self.anxiety_slider.setMaximum(100)
-        self.anxiety_slider.setValue(20)
-        self.anxiety_slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
-        self.anxiety_slider.setTickInterval(10)
-        self.anxiety_slider.valueChanged.connect(self._update_simulated_anxiety)
-        control_panel.addWidget(self.anxiety_slider)
-        
-        main_layout.addLayout(control_panel)
-        
-        # Create tab widget for different views
-        tab_widget = QtWidgets.QTabWidget()
-        main_layout.addWidget(tab_widget)
-        
-        # ECG and HRV tab
-        ecg_hrv_tab = QtWidgets.QWidget()
-        ecg_hrv_layout = QtWidgets.QVBoxLayout()
-        ecg_hrv_tab.setLayout(ecg_hrv_layout)
-        
-        # ECG plot
-        ecg_plot_widget = pg.PlotWidget(title="ECG Signal")
-        ecg_plot_widget.setLabel('left', "Amplitude", units='mV')
-        ecg_plot_widget.setLabel('bottom', "Time", units='s')
-        ecg_plot_widget.showGrid(x=True, y=True)
-        ecg_plot_widget.setYRange(-1.5, 1.5)
-        self.ecg_curve = ecg_plot_widget.plot(pen='g')
-        ecg_hrv_layout.addWidget(ecg_plot_widget)
-        
-        # HRV plots
-        hrv_plots_layout = QtWidgets.QHBoxLayout()
-        
-        # Time domain HRV
-        time_hrv_plot = pg.PlotWidget(title="HRV Time Domain (RMSSD)")
-        time_hrv_plot.setLabel('left', "RMSSD", units='ms')
-        time_hrv_plot.setLabel('bottom', "Time", units='min')
-        time_hrv_plot.showGrid(x=True, y=True)
-        self.time_hrv_curve = time_hrv_plot.plot(pen='b')
-        hrv_plots_layout.addWidget(time_hrv_plot)
-        
-        # Frequency domain HRV
-        freq_hrv_plot = pg.PlotWidget(title="HRV Frequency Domain (LF/HF Ratio)")
-        freq_hrv_plot.setLabel('left', "LF/HF Ratio")
-        freq_hrv_plot.setLabel('bottom', "Time", units='min')
-        freq_hrv_plot.showGrid(x=True, y=True)
-        self.freq_hrv_curve = freq_hrv_plot.plot(pen='r')
-        hrv_plots_layout.addWidget(freq_hrv_plot)
-        
-        ecg_hrv_layout.addLayout(hrv_plots_layout)
-        
-        # Anxiety analysis tab
-        anxiety_tab = QtWidgets.QWidget()
-        anxiety_layout = QtWidgets.QVBoxLayout()
-        anxiety_tab.setLayout(anxiety_layout)
-        
-        # Anxiety prediction plot
-        anxiety_plot = pg.PlotWidget(title="Anxiety Prediction")
-        anxiety_plot.setLabel('left', "Anxiety Level")
-        anxiety_plot.setLabel('bottom', "Time", units='min')
-        anxiety_plot.showGrid(x=True, y=True)
-        anxiety_plot.setYRange(-0.1, 3.1)
-        anxiety_plot.addLine(y=0.5, pen=pg.mkPen('g', width=1, style=QtCore.Qt.DashLine))
-        anxiety_plot.addLine(y=1.5, pen=pg.mkPen('y', width=1, style=QtCore.Qt.DashLine))
-        anxiety_plot.addLine(y=2.5, pen=pg.mkPen('r', width=1, style=QtCore.Qt.DashLine))
-        self.anxiety_curve = anxiety_plot.plot(pen='c', symbolBrush=(255,0,0), symbolPen='w')
-        
-        # Add legend
-        legend = pg.LegendItem(offset=(70, 30))
-        legend.setParentItem(anxiety_plot.graphicsItem())
-        legend.addItem(self.anxiety_curve, "Anxiety Level")
-        
-        anxiety_layout.addWidget(anxiety_plot)
-        
-        # Anxiety indicators
-        indicators_layout = QtWidgets.QHBoxLayout()
-        
-        # Current anxiety level
-        anxiety_info_layout = QtWidgets.QVBoxLayout()
-        anxiety_info_group = QtWidgets.QGroupBox("Current Anxiety Status")
-        anxiety_info_inner_layout = QtWidgets.QFormLayout()
-        self.anxiety_level_label = QtWidgets.QLabel("0")
-        self.anxiety_category_label = QtWidgets.QLabel("Low")
-        self.anxiety_confidence_label = QtWidgets.QLabel("0.00")
-        
-        anxiety_info_inner_layout.addRow("Level (0-3):", self.anxiety_level_label)
-        anxiety_info_inner_layout.addRow("Category:", self.anxiety_category_label)
-        anxiety_info_inner_layout.addRow("Confidence:", self.anxiety_confidence_label)
-        
-        anxiety_info_group.setLayout(anxiety_info_inner_layout)
-        anxiety_info_layout.addWidget(anxiety_info_group)
-        indicators_layout.addLayout(anxiety_info_layout)
-        
-        # Visual anxiety indicator
-        self.anxiety_indicator = QtWidgets.QProgressBar()
-        self.anxiety_indicator.setOrientation(QtCore.Qt.Vertical)
-        self.anxiety_indicator.setMinimum(0)
-        self.anxiety_indicator.setMaximum(100)
-        self.anxiety_indicator.setValue(0)
-        self.anxiety_indicator.setTextVisible(False)
-        self.anxiety_indicator.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid grey;
-                border-radius: 5px;
-                background-color: #FFFFFF;
-            }
-            QProgressBar::chunk {
-                background-color: #00AA00;
-            }
-        """)
-        indicators_layout.addWidget(self.anxiety_indicator)
-        
-        anxiety_layout.addLayout(indicators_layout)
-        
-        # Stimulation tab
-        stimulation_tab = QtWidgets.QWidget()
-        stimulation_layout = QtWidgets.QVBoxLayout()
-        stimulation_tab.setLayout(stimulation_layout)
-        
-        # Stimulation controls
-        stim_controls_layout = QtWidgets.QHBoxLayout()
-        
-        # Stimulation status
-        stim_status_group = QtWidgets.QGroupBox("Stimulation Status")
-        stim_status_layout = QtWidgets.QFormLayout()
-        self.stim_active_label = QtWidgets.QLabel("Not Active")
-        self.stim_duration_label = QtWidgets.QLabel("0:00")
-        self.stim_remaining_label = QtWidgets.QLabel("0:00")
-        
-        stim_status_layout.addRow("Status:", self.stim_active_label)
-        stim_status_layout.addRow("Duration:", self.stim_duration_label)
-        stim_status_layout.addRow("Remaining:", self.stim_remaining_label)
-        
-        stim_status_group.setLayout(stim_status_layout)
-        stim_controls_layout.addWidget(stim_status_group)
-        
-        # Stimulation parameters
-        stim_params_group = QtWidgets.QGroupBox("Stimulation Parameters")
-        stim_params_layout = QtWidgets.QFormLayout()
-        self.stim_waveform_label = QtWidgets.QLabel("Sine")
-        self.stim_frequency_label = QtWidgets.QLabel("0.5 Hz")
-        self.stim_phase_diff_label = QtWidgets.QLabel("0.5 s")
-        
-        stim_params_layout.addRow("Waveform:", self.stim_waveform_label)
-        stim_params_layout.addRow("Frequency:", self.stim_frequency_label)
-        stim_params_layout.addRow("Phase Difference:", self.stim_phase_diff_label)
-        
-        stim_params_group.setLayout(stim_params_layout)
-        stim_controls_layout.addWidget(stim_params_group)
-        
-        # Manual stimulation controls
-        stim_manual_group = QtWidgets.QGroupBox("Manual Control")
-        stim_manual_layout = QtWidgets.QVBoxLayout()
-        
-        # Stimulation device selection
-        self.stim1_checkbox = QtWidgets.QCheckBox("Left Stimulator (STIM001)")
-        self.stim1_checkbox.setChecked(True)
-        self.stim2_checkbox = QtWidgets.QCheckBox("Right Stimulator (STIM002)")
-        self.stim2_checkbox.setChecked(True)
-        
-        # Waveform selection
-        waveform_layout = QtWidgets.QHBoxLayout()
-        waveform_layout.addWidget(QtWidgets.QLabel("Waveform:"))
-        self.waveform_combo = QtWidgets.QComboBox()
-        self.waveform_combo.addItems([w.value for w in WaveformType])
-        waveform_layout.addWidget(self.waveform_combo)
-        
-        # Stimulation buttons
-        stim_buttons_layout = QtWidgets.QHBoxLayout()
-        self.start_stim_button = QtWidgets.QPushButton("Start Manual Stimulation")
-        self.start_stim_button.clicked.connect(self._start_manual_stimulation)
-        self.stop_stim_button = QtWidgets.QPushButton("Stop Stimulation")
-        self.stop_stim_button.clicked.connect(self._stop_stimulation)
-        self.stop_stim_button.setEnabled(False)
-        
-        stim_buttons_layout.addWidget(self.start_stim_button)
-        stim_buttons_layout.addWidget(self.stop_stim_button)
-        
-        stim_manual_layout.addWidget(self.stim1_checkbox)
-        stim_manual_layout.addWidget(self.stim2_checkbox)
-        stim_manual_layout.addLayout(waveform_layout)
-        stim_manual_layout.addLayout(stim_buttons_layout)
-        
-        stim_manual_group.setLayout(stim_manual_layout)
-        stim_controls_layout.addWidget(stim_manual_group)
-        
-        stimulation_layout.addLayout(stim_controls_layout)
-        
-        # Stimulation visualization
-        stim_viz_layout = QtWidgets.QHBoxLayout()
-        
-        # Device 1 waveform
-        stim1_plot = pg.PlotWidget(title="Left Stimulator Waveform")
-        stim1_plot.setLabel('left', "Amplitude")
-        stim1_plot.setLabel('bottom', "Time", units='s')
-        stim1_plot.showGrid(x=True, y=True)
-        stim1_plot.setYRange(-1.1, 1.1)
-        self.stim1_curve = stim1_plot.plot(pen='b')
-        stim_viz_layout.addWidget(stim1_plot)
-        
-        # Device 2 waveform
-        stim2_plot = pg.PlotWidget(title="Right Stimulator Waveform")
-        stim2_plot.setLabel('left', "Amplitude")
-        stim2_plot.setLabel('bottom', "Time", units='s')
-        stim2_plot.showGrid(x=True, y=True)
-        stim2_plot.setYRange(-1.1, 1.1)
-        self.stim2_curve = stim2_plot.plot(pen='r')
-        stim_viz_layout.addWidget(stim2_plot)
-        
-        stimulation_layout.addLayout(stim_viz_layout)
-        
-        # Add tabs to tab widget
-        tab_widget.addTab(ecg_hrv_tab, "ECG & HRV Analysis")
-        tab_widget.addTab(anxiety_tab, "Anxiety Prediction")
-        tab_widget.addTab(stimulation_tab, "CES Stimulation")
-        
-        # Add log widget
-        log_group = QtWidgets.QGroupBox("Simulation Log")
-        log_layout = QtWidgets.QVBoxLayout()
-        self.log_widget = QtWidgets.QTextEdit()
-        self.log_widget.setReadOnly(True)
-        log_layout.addWidget(self.log_widget)
-        log_group.setLayout(log_layout)
-        main_layout.addWidget(log_group)
-        
-        # Setup log handler
-        class QTextEditLogger(logging.Handler):
-            def __init__(self, widget):
-                super().__init__()
-                self.widget = widget
-                self.widget.setStyleSheet("font-family: monospace")
-                self.widget.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
-                self.widget.document().setMaximumBlockCount(500)  # Limit to 500 lines
-                
-            def emit(self, record):
-                msg = self.format(record)
-                self.widget.append(msg)
-        
-        log_handler = QTextEditLogger(self.log_widget)
-        log_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        logging.getLogger().addHandler(log_handler)
-        
-        # Setup update timers
-        self.gui_timer = QtCore.QTimer()
-        self.gui_timer.timeout.connect(self._update_gui)
-        self.gui_timer.start(50)  # Update every 50ms
-        
-        # Show the main window
-        self.main_window.show()
-    
-    def _toggle_simulation(self):
-        """Toggle the simulation between running and stopped states."""
-        if not self.running:
-            self.start_simulation()
-            if hasattr(self, 'start_stop_button'):
-                self.start_stop_button.setText("Stop Simulation")
-                self.pause_button.setEnabled(True)
-        else:
-            self.stop_simulation()
-            if hasattr(self, 'start_stop_button'):
-                self.start_stop_button.setText("Start Simulation")
-                self.pause_button.setEnabled(False)
-                self.pause_button.setText("Pause")
-    
-    def _toggle_pause(self):
-        """Toggle the simulation between paused and running states."""
-        self.pause = not self.pause
-        if self.pause:
-            if hasattr(self, 'pause_button'):
-                self.pause_button.setText("Resume")
-            logger.info("Simulation paused")
-        else:
-            if hasattr(self, 'pause_button'):
-                self.pause_button.setText("Pause")
-            logger.info("Simulation resumed")
-    
-    def _update_simulation_speed(self):
-        """Update the simulation speed based on slider value."""
-        speed_value = self.speed_slider.value() / 100.0
-        self.simulation_speed = speed_value
-        self.speed_label.setText(f"{speed_value:.1f}x")
-    
-    def _update_simulated_anxiety(self):
-        """Update the simulated anxiety level based on slider value."""
-        anxiety_value = self.anxiety_slider.value() / 100.0 * 3.0  # Scale to 0-3 range
-        # This will be used when generating simulated ECG
-    
-    def _start_manual_stimulation(self):
-        """Start manual stimulation based on GUI settings."""
-        if self.cranial_stimulator.is_stimulating:
-            logger.warning("Stimulation is already active")
-            return
-        
-        # Get selected devices
-        devices = []
-        if self.stim1_checkbox.isChecked():
-            devices.append("STIM001")
-        if self.stim2_checkbox.isChecked():
-            devices.append("STIM002")
-        
-        if not devices:
-            logger.warning("No stimulation devices selected")
-            return
-        
-        # Get selected waveform
-        waveform_str = self.waveform_combo.currentText()
-        waveform = next((w for w in WaveformType if w.value == waveform_str), WaveformType.SINE)
-        
-        # Start stimulation
-        intensities = {device_id: 0.5 for device_id in devices}
-        success = self.cranial_stimulator.start_stimulation(
-            anxiety_level=self.current_anxiety_level,
-            session_duration=5,  # 5 minutes for manual stimulation
-            waveform=waveform,
-            base_frequency=0.5,
-            phase_difference=0.5,
-            intensities=intensities
+        self.root = root
+        
+        # 시뮬레이터 생성
+        self.ecg_simulator = ECGSimulator(sampling_rate=256, noise_level=0.05)
+        self.stimulator_simulator = StimulatorSimulator(
+            num_stimulators=2, 
+            visualization=not headless
         )
         
-        if success:
-            logger.info(f"Started manual stimulation with {len(devices)} device(s)")
-            self.start_stim_button.setEnabled(False)
-            self.stop_stim_button.setEnabled(True)
-        else:
-            logger.error("Failed to start manual stimulation")
+        # 시뮬레이션된 인터페이스 생성
+        self.ecg_interface = SimulatedECGInterface(
+            self.ecg_simulator, 
+            sampling_rate=256, 
+            buffer_size=256 * 60 * 5  # 5분 데이터
+        )
+        self.stimulator_interface = SimulatedStereoStimulator(
+            self.stimulator_simulator, 
+            num_stimulators=2
+        )
+        
+        # 컨트롤러 생성 및 인터페이스 등록
+        self.controller = AnxietyPreventionController()
+        self.controller._ecg_sensor = self.ecg_interface
+        self.controller._stimulator = self.stimulator_interface
+        
+        # 시뮬레이션 상태
+        self.running = False
+        self.current_scenario = None
+        self.scenario_thread = None
+        
+        # GUI 초기화 (헤드리스 모드가 아닌 경우)
+        if not headless:
+            self._init_gui()
     
-    def _stop_stimulation(self):
-        """Stop any active stimulation."""
-        if not self.cranial_stimulator.is_stimulating:
-            logger.warning("No active stimulation to stop")
+    def _init_gui(self):
+        """
+        GUI 초기화
+        """
+        self.root.title("불안장애 예방 시스템 시뮬레이션")
+        self.root.geometry("1000x800")
+        
+        # 메인 프레임
+        main_frame = ttk.Frame(self.root, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 상단 제어 프레임
+        control_frame = ttk.LabelFrame(main_frame, text="시뮬레이션 제어", padding=10)
+        control_frame.pack(fill=tk.X, pady=5)
+        
+        # 시나리오 선택
+        scenario_frame = ttk.Frame(control_frame)
+        scenario_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(scenario_frame, text="시나리오:").pack(side=tk.LEFT, padx=5)
+        
+        self.scenario_var = tk.StringVar(value="normal")
+        scenarios = [
+            ("정상 상태", "normal"),
+            ("불안 수준 증가", "increasing_anxiety"),
+            ("갑작스런 불안 발작", "sudden_anxiety"),
+            ("불안 발작 후 회복", "recovery_after_anxiety")
+        ]
+        
+        for text, value in scenarios:
+            ttk.Radiobutton(
+                scenario_frame, 
+                text=text, 
+                value=value, 
+                variable=self.scenario_var
+            ).pack(side=tk.LEFT, padx=5)
+        
+        # 시작/중지 버튼
+        button_frame = ttk.Frame(control_frame)
+        button_frame.pack(fill=tk.X, pady=5)
+        
+        self.start_button = ttk.Button(
+            button_frame, 
+            text="시작", 
+            command=self.start_simulation
+        )
+        self.start_button.pack(side=tk.LEFT, padx=5)
+        
+        self.stop_button = ttk.Button(
+            button_frame, 
+            text="중지", 
+            command=self.stop_simulation, 
+            state=tk.DISABLED
+        )
+        self.stop_button.pack(side=tk.LEFT, padx=5)
+        
+        self.manual_stim_button = ttk.Button(
+            button_frame, 
+            text="수동 자극 실행", 
+            command=self.trigger_manual_stimulation, 
+            state=tk.DISABLED
+        )
+        self.manual_stim_button.pack(side=tk.LEFT, padx=5)
+        
+        # 모드 선택
+        mode_frame = ttk.Frame(control_frame)
+        mode_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(mode_frame, text="작동 모드:").pack(side=tk.LEFT, padx=5)
+        
+        self.mode_var = tk.StringVar(value="automatic")
+        modes = [
+            ("자동", "automatic"),
+            ("수동", "manual"),
+            ("예방", "prevention"),
+            ("훈련", "training")
+        ]
+        
+        for text, value in modes:
+            ttk.Radiobutton(
+                mode_frame, 
+                text=text, 
+                value=value, 
+                variable=self.mode_var, 
+                command=self.change_mode
+            ).pack(side=tk.LEFT, padx=5)
+        
+        # 심전도 설정 프레임
+        ecg_frame = ttk.LabelFrame(main_frame, text="ECG 시뮬레이터 설정", padding=10)
+        ecg_frame.pack(fill=tk.X, pady=5)
+        
+        # 심박수 설정
+        hr_frame = ttk.Frame(ecg_frame)
+        hr_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(hr_frame, text="심박수 (bpm):").pack(side=tk.LEFT, padx=5)
+        
+        self.hr_var = tk.IntVar(value=70)
+        hr_scale = ttk.Scale(
+            hr_frame, 
+            from_=40, 
+            to=200, 
+            orient=tk.HORIZONTAL, 
+            variable=self.hr_var, 
+            length=200
+        )
+        hr_scale.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        hr_label = ttk.Label(hr_frame, textvariable=self.hr_var, width=4)
+        hr_label.pack(side=tk.LEFT, padx=5)
+        
+        # HRV 수준 설정
+        hrv_frame = ttk.Frame(ecg_frame)
+        hrv_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(hrv_frame, text="HRV 수준:").pack(side=tk.LEFT, padx=5)
+        
+        self.hrv_var = tk.DoubleVar(value=0.1)
+        hrv_scale = ttk.Scale(
+            hrv_frame, 
+            from_=0.01, 
+            to=0.3, 
+            orient=tk.HORIZONTAL, 
+            variable=self.hrv_var, 
+            length=200
+        )
+        hrv_scale.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        self.hrv_label = ttk.Label(hrv_frame, text="0.10")
+        self.hrv_label.pack(side=tk.LEFT, padx=5)
+        
+        # HRV 변경 시 레이블 업데이트
+        def update_hrv_label(*args):
+            self.hrv_label.config(text=f"{self.hrv_var.get():.2f}")
+        
+        self.hrv_var.trace_add("write", update_hrv_label)
+        
+        # ECG 패턴 설정
+        pattern_frame = ttk.Frame(ecg_frame)
+        pattern_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(pattern_frame, text="ECG 패턴:").pack(side=tk.LEFT, padx=5)
+        
+        self.pattern_var = tk.StringVar(value="normal")
+        patterns = [
+            ("정상", "normal"),
+            ("높은 심박수", "elevated_hr"),
+            ("낮은 HRV", "reduced_hrv"),
+            ("불안", "anxiety"),
+            ("부정맥", "arrhythmia")
+        ]
+        
+        for text, value in patterns:
+            ttk.Radiobutton(
+                pattern_frame, 
+                text=text, 
+                value=value, 
+                variable=self.pattern_var
+            ).pack(side=tk.LEFT, padx=5)
+        
+        # 자극기 설정 프레임
+        stim_frame = ttk.LabelFrame(main_frame, text="자극기 설정", padding=10)
+        stim_frame.pack(fill=tk.X, pady=5)
+        
+        # 자극 주파수 설정
+        freq_frame = ttk.Frame(stim_frame)
+        freq_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(freq_frame, text="주파수 (Hz):").pack(side=tk.LEFT, padx=5)
+        
+        self.freq_var = tk.DoubleVar(value=10.0)
+        freq_scale = ttk.Scale(
+            freq_frame, 
+            from_=1.0, 
+            to=50.0, 
+            orient=tk.HORIZONTAL, 
+            variable=self.freq_var, 
+            length=200
+        )
+        freq_scale.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        self.freq_label = ttk.Label(freq_frame, text="10.0")
+        self.freq_label.pack(side=tk.LEFT, padx=5)
+        
+        # 주파수 변경 시 레이블 업데이트
+        def update_freq_label(*args):
+            self.freq_label.config(text=f"{self.freq_var.get():.1f}")
+        
+        self.freq_var.trace_add("write", update_freq_label)
+        
+        # 위상 지연 설정
+        delay_frame = ttk.Frame(stim_frame)
+        delay_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(delay_frame, text="위상 지연 (초):").pack(side=tk.LEFT, padx=5)
+        
+        self.delay_var = tk.DoubleVar(value=0.5)
+        delay_scale = ttk.Scale(
+            delay_frame, 
+            from_=0.1, 
+            to=1.0, 
+            orient=tk.HORIZONTAL, 
+            variable=self.delay_var, 
+            length=200
+        )
+        delay_scale.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        self.delay_label = ttk.Label(delay_frame, text="0.5")
+        self.delay_label.pack(side=tk.LEFT, padx=5)
+        
+        # 위상 지연 변경 시 레이블 업데이트
+        def update_delay_label(*args):
+            self.delay_label.config(text=f"{self.delay_var.get():.1f}")
+        
+        self.delay_var.trace_add("write", update_delay_label)
+        
+        # 파형 유형 설정
+        waveform_frame = ttk.Frame(stim_frame)
+        waveform_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(waveform_frame, text="파형 유형:").pack(side=tk.LEFT, padx=5)
+        
+        self.waveform_var = tk.StringVar(value="sine")
+        waveforms = [
+            ("정현파", "sine"),
+            ("구형파", "square"),
+            ("삼각파", "triangle"),
+            ("톱니파", "sawtooth"),
+            ("펄스파", "pulse")
+        ]
+        
+        for text, value in waveforms:
+            ttk.Radiobutton(
+                waveform_frame, 
+                text=text, 
+                value=value, 
+                variable=self.waveform_var
+            ).pack(side=tk.LEFT, padx=5)
+        
+        # 설정 적용 버튼
+        apply_frame = ttk.Frame(stim_frame)
+        apply_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(
+            apply_frame, 
+            text="ECG 설정 적용", 
+            command=self.apply_ecg_settings
+        ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            apply_frame, 
+            text="자극기 설정 적용", 
+            command=self.apply_stimulator_settings
+        ).pack(side=tk.LEFT, padx=5)
+        
+        # 시스템 상태 프레임
+        status_frame = ttk.LabelFrame(main_frame, text="시스템 상태", padding=10)
+        status_frame.pack(fill=tk.X, pady=5)
+        
+        self.status_text = tk.Text(status_frame, height=8, width=80, wrap=tk.WORD)
+        self.status_text.pack(fill=tk.BOTH, expand=True)
+        self.status_text.config(state=tk.DISABLED)
+        
+        # 그래프 프레임
+        graph_frame = ttk.LabelFrame(main_frame, text="모니터링", padding=10)
+        graph_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Matplotlib 그래프 추가
+        self.fig = Figure(figsize=(10, 6), dpi=100)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=graph_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        # 그래프 초기화
+        self.ax_ecg = self.fig.add_subplot(3, 1, 1)
+        self.ax_ecg.set_title("ECG 신호")
+        self.ax_ecg.set_ylabel("진폭")
+        self.ax_ecg.grid(True)
+        
+        self.ax_hrv = self.fig.add_subplot(3, 1, 2)
+        self.ax_hrv.set_title("HRV 지표 및 불안 점수")
+        self.ax_hrv.set_ylabel("값")
+        self.ax_hrv.grid(True)
+        
+        self.ax_stim = self.fig.add_subplot(3, 1, 3)
+        self.ax_stim.set_title("자극 신호")
+        self.ax_stim.set_xlabel("시간 (초)")
+        self.ax_stim.set_ylabel("진폭")
+        self.ax_stim.grid(True)
+        
+        self.fig.tight_layout()
+        
+        # 그래프 업데이트 타이머
+        self.update_plot()
+        
+        # 상태 업데이트 타이머
+        self.update_status()
+    
+    def apply_ecg_settings(self):
+        """
+        ECG 설정을 시뮬레이터에 적용
+        """
+        if not self.ecg_simulator:
             return
         
-        success = self.cranial_stimulator.stop_stimulation()
+        hr = self.hr_var.get()
+        hrv_level = self.hrv_var.get()
+        pattern = self.pattern_var.get()
         
-        if success:
-            logger.info("Stopped stimulation")
-            self.start_stim_button.setEnabled(True)
-            self.stop_stim_button.setEnabled(False)
-        else:
-            logger.error("Failed to stop stimulation")
+        self.ecg_simulator.set_pattern(pattern, heart_rate=hr, hrv_level=hrv_level)
+        
+        self.log_status(f"ECG 설정이 적용되었습니다. HR={hr}bpm, HRV={hrv_level:.2f}, 패턴={pattern}")
     
-    def _update_gui(self):
-        """Update the GUI with the latest simulation data."""
-        if not self.running:
+    def apply_stimulator_settings(self):
+        """
+        자극기 설정을 시뮬레이터에 적용
+        """
+        if not self.stimulator_simulator:
             return
         
-        # Update ECG plot
-        if self.ecg_data:
-            # Show last 10 seconds of ECG data
-            sample_rate = self.ecg_simulator.sample_rate
-            window_size = min(len(self.ecg_data), 10 * sample_rate)
-            recent_ecg = self.ecg_data[-window_size:]
-            time_axis = np.linspace(0, len(recent_ecg) / sample_rate, len(recent_ecg))
-            self.ecg_curve.setData(time_axis, recent_ecg)
+        frequency = self.freq_var.get()
+        delay = self.delay_var.get()
+        waveform = self.waveform_var.get()
         
-        # Update HRV plots
-        if self.hrv_data:
-            time_points = np.arange(len(self.hrv_data)) / 60.0  # Convert to minutes
-            
-            # Extract RMSSD values
-            rmssd_values = [data['RMSSD'] for data in self.hrv_data]
-            self.time_hrv_curve.setData(time_points, rmssd_values)
-            
-            # Extract LF/HF ratio values
-            lf_hf_values = [data['LF_HF_ratio'] for data in self.hrv_data]
-            self.freq_hrv_curve.setData(time_points, lf_hf_values)
+        self.stimulator_simulator.set_frequency(frequency)
+        self.stimulator_simulator.set_phase_delay(delay)
+        self.stimulator_simulator.set_waveform(waveform)
         
-        # Update anxiety plot
-        if self.anxiety_data:
-            time_points = np.arange(len(self.anxiety_data)) / 60.0  # Convert to minutes
-            anxiety_levels = [data['risk_level'] for data in self.anxiety_data]
-            self.anxiety_curve.setData(time_points, anxiety_levels)
+        self.log_status(f"자극기 설정이 적용되었습니다. 주파수={frequency}Hz, 위상 지연={delay}초, 파형={waveform}")
+    
+    def log_status(self, message):
+        """
+        상태 텍스트에 메시지 추가
+        
+        매개변수:
+            message (str): 로그 메시지
+        """
+        if self.headless:
+            logger.info(message)
+            return
+        
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_message = f"[{timestamp}] {message}\n"
+        
+        self.status_text.config(state=tk.NORMAL)
+        self.status_text.insert(tk.END, log_message)
+        self.status_text.see(tk.END)
+        self.status_text.config(state=tk.DISABLED)
+    
+    def change_mode(self):
+        """
+        작동 모드 변경
+        """
+        mode = self.mode_var.get()
+        self.controller.set_operation_mode(mode)
+        self.log_status(f"작동 모드가 변경되었습니다: {mode}")
+    
+    def update_status(self):
+        """
+        상태 정보 업데이트
+        """
+        if self.running and not self.headless:
+            # 컨트롤러 상태 가져오기
+            status = self.controller.get_status()
             
-            # Update current anxiety status
-            if self.anxiety_data:
-                latest = self.anxiety_data[-1]
-                self.anxiety_level_label.setText(str(latest['risk_level']))
-                self.anxiety_category_label.setText(latest['risk_category'])
-                self.anxiety_confidence_label.setText(f"{latest['confidence']:.2f}")
+            # 상태 텍스트 업데이트 (너무 자주 하지 않도록)
+            if status and hasattr(self, 'last_status_update') and time.time() - self.last_status_update >= 1.0:
+                state = status.get('state', 'unknown')
                 
-                # Update anxiety indicator
-                indicator_value = int(latest['risk_level'] * 100 / 3)  # Scale to 0-100
-                self.anxiety_indicator.setValue(indicator_value)
-                
-                # Change indicator color based on anxiety level
-                if latest['risk_level'] == 0:
-                    color = "#00AA00"  # Green
-                elif latest['risk_level'] == 1:
-                    color = "#AAAA00"  # Yellow
-                elif latest['risk_level'] == 2:
-                    color = "#FF7700"  # Orange
+                # 불안 점수 표시
+                anxiety_score = status.get('anxiety_score')
+                if anxiety_score is not None:
+                    anxiety_status = f", 불안 점수: {anxiety_score:.2f}"
                 else:
-                    color = "#FF0000"  # Red
+                    anxiety_status = ""
                 
-                self.anxiety_indicator.setStyleSheet(f"""
-                    QProgressBar {{
-                        border: 2px solid grey;
-                        border-radius: 5px;
-                        background-color: #FFFFFF;
-                    }}
-                    QProgressBar::chunk {{
-                        background-color: {color};
-                    }}
-                """)
-        
-        # Update stimulation status
-        stim_status = self.cranial_stimulator.get_stimulation_status()
-        if stim_status['is_stimulating']:
-            self.stim_active_label.setText("Active")
+                self.log_status(f"시스템 상태: {state}{anxiety_status}")
+                self.last_status_update = time.time()
             
-            session = stim_status['session']
-            if session:
-                # Format duration
-                duration_mins = int(session['duration'] / 60)
-                duration_secs = int(session['duration'] % 60)
-                self.stim_duration_label.setText(f"{duration_mins}:{duration_secs:02d}")
+            # 1초 후 다시 호출
+            self.root.after(1000, self.update_status)
+    
+    def update_plot(self):
+        """
+        그래프 업데이트
+        """
+        if self.running and not self.headless:
+            try:
+                # ECG 데이터 업데이트
+                try:
+                    ecg_data, timestamps = self.ecg_simulator.get_data(duration=5)
+                    if len(ecg_data) > 0 and len(timestamps) > 0:
+                        self.ax_ecg.clear()
+                        self.ax_ecg.plot(timestamps - timestamps[0], ecg_data)
+                        self.ax_ecg.set_title("ECG 신호")
+                        self.ax_ecg.set_ylabel("진폭")
+                        self.ax_ecg.grid(True)
+                except Exception as e:
+                    logger.error(f"ECG 그래프 업데이트 중 오류: {e}")
                 
-                # Format remaining time
-                remaining_mins = int(session['remaining_time'] / 60)
-                remaining_secs = int(session['remaining_time'] % 60)
-                self.stim_remaining_label.setText(f"{remaining_mins}:{remaining_secs:02d}")
+                # HRV 및 불안 점수 업데이트
+                try:
+                    if hasattr(self.controller, 'anxiety_scores') and len(self.controller.anxiety_scores) > 0:
+                        self.ax_hrv.clear()
+                        
+                        # 타임스탬프 변환 (0부터 시작)
+                        if self.controller.timestamps:
+                            times = [t - self.controller.timestamps[0] for t in self.controller.timestamps]
+                        else:
+                            times = list(range(len(self.controller.anxiety_scores)))
+                        
+                        # 불안 점수 플롯
+                        self.ax_hrv.plot(times, self.controller.anxiety_scores, 'r-', label='불안 점수')
+                        
+                        # 자극 시점 표시
+                        if self.controller.last_stimulation_time > 0:
+                            stim_time = self.controller.last_stimulation_time - self.controller.timestamps[0] if self.controller.timestamps else 0
+                            self.ax_hrv.axvline(x=stim_time, color='g', linestyle='--', label='자극 시점')
+                        
+                        self.ax_hrv.set_title("불안 점수")
+                        self.ax_hrv.set_ylabel("점수")
+                        self.ax_hrv.set_ylim(0, 1)
+                        self.ax_hrv.legend()
+                        self.ax_hrv.grid(True)
+                except Exception as e:
+                    logger.error(f"HRV 그래프 업데이트 중 오류: {e}")
                 
-                # Update parameter labels
-                self.stim_waveform_label.setText(session['waveform'])
-                self.stim_frequency_label.setText(f"{self.cranial_stimulator.current_session['base_frequency']:.1f} Hz")
-                self.stim_phase_diff_label.setText(f"{self.cranial_stimulator.current_session['phase_difference']:.1f} s")
+                # 자극 신호 업데이트
+                try:
+                    if self.stimulator_simulator.times:
+                        self.ax_stim.clear()
+                        
+                        # 시간 범위 (최근 5초)
+                        end_time = self.stimulator_simulator.times[-1] if self.stimulator_simulator.times else 0
+                        start_time = max(0, end_time - 5)
+                        
+                        # 표시할 데이터 인덱스 찾기
+                        start_idx = 0
+                        for i, t in enumerate(self.stimulator_simulator.times):
+                            if t >= start_time:
+                                start_idx = i
+                                break
+                        
+                        # 각 자극기 신호 플롯
+                        for i in range(self.stimulator_simulator.num_stimulators):
+                            if start_idx < len(self.stimulator_simulator.generated_signals[i]):
+                                self.ax_stim.plot(
+                                    self.stimulator_simulator.times[start_idx:],
+                                    self.stimulator_simulator.generated_signals[i][start_idx:],
+                                    label=f'자극기 {i+1}'
+                                )
+                        
+                        self.ax_stim.set_title("자극 신호")
+                        self.ax_stim.set_xlabel("시간 (초)")
+                        self.ax_stim.set_ylabel("진폭")
+                        self.ax_stim.legend()
+                        self.ax_stim.set_ylim(-1.1, 1.1)
+                        self.ax_stim.grid(True)
+                except Exception as e:
+                    logger.error(f"자극 그래프 업데이트 중 오류: {e}")
                 
-                # Update waveform plots
-                t = np.linspace(0, 2, 200)
-                freq = self.cranial_stimulator.current_session['base_frequency']
+                # 그래프 업데이트
+                self.fig.tight_layout()
+                self.canvas.draw()
                 
-                # Generate waveforms based on type
-                if self.cranial_stimulator.current_session['waveform'] == WaveformType.SINE:
-                    wave1 = np.sin(2 * np.pi * freq * t)
-                    wave2 = np.sin(2 * np.pi * freq * (t - self.cranial_stimulator.current_session['phase_difference']))
-                elif self.cranial_stimulator.current_session['waveform'] == WaveformType.SQUARE:
-                    wave1 = np.sign(np.sin(2 * np.pi * freq * t))
-                    wave2 = np.sign(np.sin(2 * np.pi * freq * (t - self.cranial_stimulator.current_session['phase_difference'])))
-                elif self.cranial_stimulator.current_session['waveform'] == WaveformType.TRIANGULAR:
-                    wave1 = 2 * np.abs(2 * (t * freq - np.floor(t * freq + 0.5))) - 1
-                    wave2 = 2 * np.abs(2 * ((t - self.cranial_stimulator.current_session['phase_difference']) * freq - 
-                                           np.floor((t - self.cranial_stimulator.current_session['phase_difference']) * freq + 0.5))) - 1
-                elif self.cranial_stimulator.current_session['waveform'] == WaveformType.MONOPHASIC:
-                    wave1 = np.maximum(0, np.sin(2 * np.pi * freq * t))
-                    wave2 = np.maximum(0, np.sin(2 * np.pi * freq * (t - self.cranial_stimulator.current_session['phase_difference'])))
-                else:  # BIPHASIC
-                    wave1 = np.sin(2 * np.pi * freq * t)
-                    wave2 = np.sin(2 * np.pi * freq * (t - self.cranial_stimulator.current_session['phase_difference']))
-                
-                # Scale by intensity
-                if "STIM001" in self.cranial_stimulator.current_session['intensities']:
-                    wave1 *= self.cranial_stimulator.current_session['intensities']["STIM001"]
-                if "STIM002" in self.cranial_stimulator.current_session['intensities']:
-                    wave2 *= self.cranial_stimulator.current_session['intensities']["STIM002"]
-                
-                self.stim1_curve.setData(t, wave1)
-                self.stim2_curve.setData(t, wave2)
-                
-        else:
-            self.stim_active_label.setText("Not Active")
-            self.stim_duration_label.setText("0:00")
-            self.stim_remaining_label.setText("0:00")
+            except Exception as e:
+                logger.error(f"그래프 업데이트 중 오류: {e}")
             
-            # Clear waveform plots
-            self.stim1_curve.setData([], [])
-            self.stim2_curve.setData([], [])
+            # 100ms 후 다시 호출
+            self.root.after(100, self.update_plot)
     
     def start_simulation(self):
-        """Start the simulation."""
+        """
+        시뮬레이션 시작
+        """
         if self.running:
-            logger.warning("Simulation is already running")
             return
         
-        logger.info("Starting simulation")
         self.running = True
-        self.pause = False
+        self.last_status_update = 0
         
-        # Reset data
-        self.ecg_data = []
-        self.hrv_data = []
-        self.anxiety_data = []
+        # 시나리오 설정
+        scenario = self.scenario_var.get()
+        self.current_scenario = scenario
         
-        # Start ECG simulation
-        self.ecg_timer = threading.Timer(0.1, self._ecg_update_task)
-        self.ecg_timer.daemon = True
-        self.ecg_timer.start()
+        # 설정 적용
+        self.apply_ecg_settings()
+        self.apply_stimulator_settings()
         
-        # Start HRV analysis
-        self.hrv_timer = threading.Timer(1.0, self._hrv_update_task)
-        self.hrv_timer.daemon = True
-        self.hrv_timer.start()
+        # 컨트롤러 시작
+        self.controller.start()
         
-        # Start anxiety prediction
-        self.anxiety_timer = threading.Timer(5.0, self._anxiety_update_task)
-        self.anxiety_timer.daemon = True
-        self.anxiety_timer.start()
+        # 버튼 상태 변경
+        if not self.headless:
+            self.start_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.NORMAL)
+            self.manual_stim_button.config(state=tk.NORMAL)
+        
+        # 시나리오 스레드 시작
+        self.scenario_thread = threading.Thread(
+            target=self._run_scenario,
+            args=(scenario,)
+        )
+        self.scenario_thread.daemon = True
+        self.scenario_thread.start()
+        
+        self.log_status(f"시뮬레이션이 시작되었습니다. 시나리오: {scenario}")
     
     def stop_simulation(self):
-        """Stop the simulation."""
+        """
+        시뮬레이션 중지
+        """
         if not self.running:
-            logger.warning("Simulation is not running")
             return
         
-        logger.info("Stopping simulation")
         self.running = False
         
-        # Stop any active stimulation
-        if self.cranial_stimulator.is_stimulating:
-            self.cranial_stimulator.stop_stimulation()
+        # 컨트롤러 중지
+        self.controller.stop()
         
-        # Wait for timers to finish
-        # No need to join or cancel timers as they will exit naturally due to self.running = False
+        # 버튼 상태 변경
+        if not self.headless:
+            self.start_button.config(state=tk.NORMAL)
+            self.stop_button.config(state=tk.DISABLED)
+            self.manual_stim_button.config(state=tk.DISABLED)
+        
+        self.log_status("시뮬레이션이 중지되었습니다.")
     
-    def _ecg_update_task(self):
-        """Task to periodically update simulated ECG data."""
-        while self.running:
-            if not self.pause:
-                # Get anxiety level from slider if GUI is available
-                if hasattr(self, 'anxiety_slider'):
-                    anxiety_factor = self.anxiety_slider.value() / 100.0
-                else:
-                    # Simulate varying anxiety for headless mode
-                    t = time.time() / 100.0
-                    anxiety_factor = (np.sin(t) + 1) / 2.0  # Oscillate between 0 and 1
+    def trigger_manual_stimulation(self):
+        """
+        수동 자극 트리거
+        """
+        if not self.running:
+            return
+        
+        # 수동 자극 요청
+        self.controller.manual_stimulation(
+            duration=60,  # 1분 자극
+            parameters={
+                'frequency': self.freq_var.get(),
+                'waveform_type': self.waveform_var.get(),
+                'phase_delay': self.delay_var.get()
+            }
+        )
+        
+        self.log_status("수동 자극이 시작되었습니다.")
+    
+    def _run_scenario(self, scenario):
+        """
+        시나리오 실행
+        
+        매개변수:
+            scenario (str): 시나리오 이름
+        """
+        try:
+            if scenario == "normal":
+                # 정상 상태 시나리오
+                self._run_normal_scenario()
+            elif scenario == "increasing_anxiety":
+                # 불안 수준 증가 시나리오
+                self._run_increasing_anxiety_scenario()
+            elif scenario == "sudden_anxiety":
+                # 갑작스런 불안 발작 시나리오
+                self._run_sudden_anxiety_scenario()
+            elif scenario == "recovery_after_anxiety":
+                # 불안 발작 후 회복 시나리오
+                self._run_recovery_after_anxiety_scenario()
+            else:
+                logger.warning(f"알 수 없는 시나리오: {scenario}")
                 
-                # Generate ECG data with adjustments based on anxiety level
-                # Higher anxiety leads to higher heart rate and lower HRV
-                heart_rate = 60 + (40 * anxiety_factor)  # 60-100 BPM
-                hrv_factor = 1.0 - (0.8 * anxiety_factor)  # 1.0-0.2 (less HRV with more anxiety)
+        except Exception as e:
+            logger.error(f"시나리오 실행 중 오류 발생: {e}")
+    
+    def _run_normal_scenario(self):
+        """
+        정상 상태 시나리오 실행
+        
+        정상적인 ECG 패턴과 HRV를 유지합니다.
+        """
+        self.log_status("정상 상태 시나리오를 실행합니다.")
+        
+        # 정상 심박 패턴 설정
+        self.ecg_simulator.set_pattern(
+            ECGPatternType.NORMAL,
+            heart_rate=70,
+            hrv_level=0.1
+        )
+        
+        # 시나리오 지속 시간 동안 대기
+        duration = 300  # 5분
+        start_time = time.time()
+        
+        while self.running and time.time() - start_time < duration:
+            # 약간의 변동 추가
+            hr_variation = np.random.normal(0, 2)  # 표준편차 2bpm
+            current_hr = 70 + hr_variation
+            
+            hrv_variation = np.random.normal(0, 0.01)  # 표준편차 0.01
+            current_hrv = 0.1 + hrv_variation
+            
+            # 설정 업데이트
+            self.ecg_simulator.set_pattern(
+                ECGPatternType.NORMAL,
+                heart_rate=max(60, min(80, current_hr)),
+                hrv_level=max(0.08, min(0.12, current_hrv))
+            )
+            
+            # GUI 업데이트 (헤드리스 모드가 아닌 경우)
+            if not self.headless:
+                self.hr_var.set(int(current_hr))
+                self.hrv_var.set(current_hrv)
+            
+            # 30초마다 로그 기록
+            elapsed = time.time() - start_time
+            if int(elapsed) % 30 == 0:
+                self.log_status(f"정상 상태 유지 중... (경과 시간: {int(elapsed)}초)")
+            
+            # 잠시 대기
+            time.sleep(5)
+        
+        self.log_status("정상 상태 시나리오가 완료되었습니다.")
+    
+    def _run_increasing_anxiety_scenario(self):
+        """
+        불안 수준 증가 시나리오 실행
+        
+        심박수가 점진적으로 증가하고 HRV가 감소하여 불안 수준이 높아지는 패턴을 시뮬레이션합니다.
+        """
+        self.log_status("불안 수준 증가 시나리오를 실행합니다.")
+        
+        # 초기 설정
+        initial_hr = 70
+        initial_hrv = 0.1
+        
+        # 시나리오 지속 시간
+        duration = 300  # 5분
+        start_time = time.time()
+        
+        # 점진적 변화
+        while self.running and time.time() - start_time < duration:
+            # 경과 시간 비율 (0-1)
+            progress = min(1.0, (time.time() - start_time) / duration)
+            
+            # 심박수 증가 (70bpm -> 100bpm)
+            current_hr = initial_hr + progress * 30
+            
+            # HRV 감소 (0.1 -> 0.03)
+            current_hrv = initial_hrv - progress * 0.07
+            
+            # 약간의 무작위성 추가
+            hr_noise = np.random.normal(0, 2)  # 표준편차 2bpm
+            hrv_noise = np.random.normal(0, 0.005)  # 표준편차 0.005
+            
+            current_hr += hr_noise
+            current_hrv += hrv_noise
+            
+            # 값 범위 제한
+            current_hr = max(65, min(105, current_hr))
+            current_hrv = max(0.02, min(0.12, current_hrv))
+            
+            # 진행 상태에 따라 패턴 선택
+            if progress < 0.3:
+                pattern = ECGPatternType.NORMAL
+            elif progress < 0.6:
+                pattern = ECGPatternType.REDUCED_HRV
+            else:
+                pattern = ECGPatternType.ANXIETY
+            
+            # 설정 업데이트
+            self.ecg_simulator.set_pattern(
+                pattern,
+                heart_rate=current_hr,
+                hrv_level=current_hrv
+            )
+            
+            # GUI 업데이트 (헤드리스 모드가 아닌 경우)
+            if not self.headless:
+                self.hr_var.set(int(current_hr))
+                self.hrv_var.set(current_hrv)
+                self.pattern_var.set(pattern.value)
+            
+            # 30초마다 로그 기록
+            elapsed = time.time() - start_time
+            if int(elapsed) % 30 == 0:
+                self.log_status(
+                    f"불안 수준 증가 중... "
+                    f"(경과 시간: {int(elapsed)}초, HR: {current_hr:.1f}bpm, HRV: {current_hrv:.3f})"
+                )
+            
+            # 잠시 대기
+            time.sleep(5)
+        
+        self.log_status("불안 수준 증가 시나리오가 완료되었습니다.")
+    
+    def _run_sudden_anxiety_scenario(self):
+        """
+        갑작스런 불안 발작 시나리오 실행
+        
+        처음에는 정상 상태를 유지하다가 갑자기 불안 패턴으로 전환되는 시나리오입니다.
+        """
+        self.log_status("갑작스런 불안 발작 시나리오를 실행합니다.")
+        
+        # 시나리오 지속 시간
+        duration = 300  # 5분
+        start_time = time.time()
+        
+        # 불안 발작 시점
+        attack_time = 120  # 2분 지점
+        
+        # 시나리오 실행
+        while self.running and time.time() - start_time < duration:
+            elapsed = time.time() - start_time
+            
+            # 불안 발작 이전: 정상 상태
+            if elapsed < attack_time:
+                # 약간의 변동 추가
+                hr_variation = np.random.normal(0, 2)
+                hrv_variation = np.random.normal(0, 0.01)
                 
-                new_ecg_data = self.ecg_simulator.generate_ecg_segment(
-                    duration=0.2,
-                    heart_rate=heart_rate,
-                    hrv_factor=hrv_factor,
-                    noise_level=0.05 + (0.1 * anxiety_factor)
+                # 설정 업데이트
+                self.ecg_simulator.set_pattern(
+                    ECGPatternType.NORMAL,
+                    heart_rate=70 + hr_variation,
+                    hrv_level=0.1 + hrv_variation
                 )
                 
-                self.ecg_data.extend(new_ecg_data)
+                # GUI 업데이트
+                if not self.headless:
+                    self.hr_var.set(int(70 + hr_variation))
+                    self.hrv_var.set(0.1 + hrv_variation)
+                    self.pattern_var.set(ECGPatternType.NORMAL.value)
                 
-                # Keep only last 60 seconds of data
-                max_samples = 60 * self.ecg_simulator.sample_rate
-                if len(self.ecg_data) > max_samples:
-                    self.ecg_data = self.ecg_data[-max_samples:]
-            
-            # Sleep interval adjusted by simulation speed
-            time.sleep(0.1 / self.simulation_speed)
-    
-    def _hrv_update_task(self):
-        """Task to periodically analyze HRV from ECG data."""
-        while self.running:
-            if not self.pause and len(self.ecg_data) >= 10 * self.ecg_simulator.sample_rate:
-                # Use last 30 seconds of ECG data for HRV analysis
-                window_size = min(len(self.ecg_data), 30 * self.ecg_simulator.sample_rate)
-                ecg_segment = self.ecg_data[-window_size:]
+                # 30초마다 로그 기록
+                if int(elapsed) % 30 == 0:
+                    self.log_status(f"정상 상태 유지 중... (경과 시간: {int(elapsed)}초)")
                 
-                try:
-                    # Analyze HRV
-                    hrv_params = self.hrv_analyzer.analyze_ecg(
-                        ecg_signal=np.array(ecg_segment),
-                        sample_rate=self.ecg_simulator.sample_rate
+            # 불안 발작 시작
+            elif elapsed == attack_time or (attack_time <= elapsed < attack_time + 5):
+                self.log_status("갑작스런 불안 발작 시작!")
+                
+                # 불안 패턴으로 급격한 전환
+                self.ecg_simulator.set_pattern(
+                    ECGPatternType.ANXIETY,
+                    heart_rate=110,
+                    hrv_level=0.03
+                )
+                
+                # GUI 업데이트
+                if not self.headless:
+                    self.hr_var.set(110)
+                    self.hrv_var.set(0.03)
+                    self.pattern_var.set(ECGPatternType.ANXIETY.value)
+                
+            # 불안 발작 진행
+            else:
+                # 약간의 변동 추가
+                hr_variation = np.random.normal(0, 5)
+                hrv_variation = np.random.normal(0, 0.005)
+                
+                # 설정 업데이트
+                self.ecg_simulator.set_pattern(
+                    ECGPatternType.ANXIETY,
+                    heart_rate=110 + hr_variation,
+                    hrv_level=0.03 + hrv_variation
+                )
+                
+                # GUI 업데이트
+                if not self.headless:
+                    self.hr_var.set(int(110 + hr_variation))
+                    self.hrv_var.set(0.03 + hrv_variation)
+                
+                # 30초마다 로그 기록
+                if int(elapsed) % 30 == 0:
+                    self.log_status(
+                        f"불안 발작 진행 중... "
+                        f"(경과 시간: {int(elapsed)}초, HR: {110+hr_variation:.1f}bpm, HRV: {0.03+hrv_variation:.3f})"
                     )
-                    
-                    if hrv_params:
-                        self.hrv_data.append(hrv_params)
-                        logger.debug(f"HRV parameters updated: RMSSD={hrv_params['RMSSD']:.2f}, "
-                                    f"LF/HF={hrv_params['LF_HF_ratio']:.2f}")
-                except Exception as e:
-                    logger.error(f"Error analyzing HRV: {str(e)}")
             
-            # Sleep interval adjusted by simulation speed
-            time.sleep(1.0 / self.simulation_speed)
-    
-    def _anxiety_update_task(self):
-        """Task to periodically predict anxiety levels from HRV data."""
-        intervention_cooldown = 0
+            # 잠시 대기
+            time.sleep(5)
         
-        while self.running:
-            if not self.pause and len(self.hrv_data) > 0:
-                # Use the latest HRV parameters for anxiety prediction
-                latest_hrv = self.hrv_data[-1]
-                
-                try:
-                    # Predict anxiety level
-                    prediction = self.anxiety_predictor.predict(latest_hrv)
-                    self.anxiety_data.append(prediction)
-                    self.current_anxiety_level = prediction['risk_level']
-                    
-                    logger.info(f"Anxiety prediction: Level {prediction['risk_level']} "
-                               f"({prediction['risk_category']}) with confidence {prediction['confidence']:.2f}")
-                    
-                    # Check if intervention is needed
-                    if (prediction['risk_level'] >= 2 and not self.cranial_stimulator.is_stimulating
-                            and intervention_cooldown <= 0):
-                        # Get recommended stimulation parameters
-                        params = self.cranial_stimulator.get_recommended_parameters(prediction['risk_level'])
-                        
-                        # Start stimulation with both devices
-                        success = self.cranial_stimulator.start_stimulation(
-                            anxiety_level=prediction['risk_level'],
-                            session_duration=params['duration'],
-                            waveform=WaveformType(params['waveform']),
-                            base_frequency=params['frequency'],
-                            phase_difference=params['phase_difference']
-                        )
-                        
-                        if success:
-                            logger.info(f"Started automatic stimulation for anxiety level {prediction['risk_level']}")
-                            intervention_cooldown = 60  # Set cooldown to 60 seconds
-                            
-                            if hasattr(self, 'start_stim_button') and hasattr(self, 'stop_stim_button'):
-                                self.start_stim_button.setEnabled(False)
-                                self.stop_stim_button.setEnabled(True)
-                        else:
-                            logger.error("Failed to start automatic stimulation")
-                
-                except Exception as e:
-                    logger.error(f"Error predicting anxiety: {str(e)}")
-                
-                # Update cooldown
-                if intervention_cooldown > 0:
-                    intervention_cooldown -= 5 * self.simulation_speed
-            
-            # Sleep interval adjusted by simulation speed
-            time.sleep(5.0 / self.simulation_speed)
+        self.log_status("갑작스런 불안 발작 시나리오가 완료되었습니다.")
     
-    def run(self):
-        """Run the simulation."""
-        if not self.headless and GUI_AVAILABLE:
-            # Start the GUI event loop
-            self.app.exec_()
-        else:
-            # Run in headless mode
-            self.start_simulation()
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                logger.info("Keyboard interrupt received, stopping simulation")
-                self.stop_simulation()
+    def _run_recovery_after_anxiety_scenario(self):
+        """
+        불안 발작 후 회복 시나리오 실행
+        
+        불안 상태가 일정 시간 지속된 후 (자극 이후) 서서히 정상 상태로 회복되는 시나리오입니다.
+        """
+        self.log_status("불안 발작 후 회복 시나리오를 실행합니다.")
+        
+        # 시나리오 지속 시간
+        duration = 360  # 6분
+        start_time = time.time()
+        
+        # 단계별 지속 시간
+        anxiety_duration = 90   # 불안 상태 (1분 30초)
+        stim_duration = 60      # 자극 시간 (1분)
+        recovery_duration = 210  # 회복 시간 (3분 30초)
+        
+        # 현재 단계
+        current_stage = "anxiety"
+        
+        # 시나리오 실행
+        while self.running and time.time() - start_time < duration:
+            elapsed = time.time() - start_time
+            
+            # 단계 결정
+            if elapsed < anxiety_duration:
+                current_stage = "anxiety"
+            elif elapsed < anxiety_duration + stim_duration:
+                current_stage = "stimulation"
+            else:
+                current_stage = "recovery"
+                # 회복 진행 상태 (0-1)
+                recovery_progress = min(1.0, (elapsed - (anxiety_duration + stim_duration)) / recovery_duration)
+            
+            # 단계별 처리
+            if current_stage == "anxiety":
+                # 불안 상태 유지
+                hr_variation = np.random.normal(0, 3)
+                hrv_variation = np.random.normal(0, 0.005)
+                
+                # 설정 업데이트
+                self.ecg_simulator.set_pattern(
+                    ECGPatternType.ANXIETY,
+                    heart_rate=100 + hr_variation,
+                    hrv_level=0.04 + hrv_variation
+                )
+                
+                # GUI 업데이트
+                if not self.headless:
+                    self.hr_var.set(int(100 + hr_variation))
+                    self.hrv_var.set(0.04 + hrv_variation)
+                    self.pattern_var.set(ECGPatternType.ANXIETY.value)
+                
+                # 로깅
+                if elapsed < 5 or int(elapsed) % 30 == 0:
+                    self.log_status(
+                        f"불안 상태 유지 중... "
+                        f"(경과 시간: {int(elapsed)}초, HR: {100+hr_variation:.1f}bpm, HRV: {0.04+hrv_variation:.3f})"
+                    )
+                
+            elif current_stage == "stimulation":
+                # 자극 시작 시점에 수동 자극 트리거
+                if abs(elapsed - anxiety_duration) < 5:
+                    self.log_status("자극 시작...")
+                    
+                    # 자극 파라미터 설정
+                    self.controller.set_stimulation_parameters({
+                        'frequency': 15.0,
+                        'phase_delay': 0.5,
+                        'waveform_type': 'sine',
+                        'phase_type': 'biphasic',
+                        'duration': stim_duration
+                    })
+                    
+                    # 수동 자극 시작
+                    self.controller.manual_stimulation(duration=stim_duration)
+                    
+                    # GUI 업데이트
+                    if not self.headless:
+                        self.freq_var.set(15.0)
+                        self.delay_var.set(0.5)
+                        self.waveform_var.set('sine')
+                
+                # 자극 중 불안 수준 서서히 감소
+                stim_progress = (elapsed - anxiety_duration) / stim_duration
+                
+                # 심박수: 100 -> 90
+                current_hr = 100 - stim_progress * 10 + np.random.normal(0, 2)
+                
+                # HRV: 0.04 -> 0.06
+                current_hrv = 0.04 + stim_progress * 0.02 + np.random.normal(0, 0.005)
+                
+                # 설정 업데이트
+                self.ecg_simulator.set_pattern(
+                    ECGPatternType.REDUCED_HRV,
+                    heart_rate=current_hr,
+                    hrv_level=current_hrv
+                )
+                
+                # GUI 업데이트
+                if not self.headless:
+                    self.hr_var.set(int(current_hr))
+                    self.hrv_var.set(current_hrv)
+                    self.pattern_var.set(ECGPatternType.REDUCED_HRV.value)
+                
+                # 로깅
+                if int(elapsed) % 20 == 0:
+                    self.log_status(
+                        f"자극 중, 불안 수준 감소 중... "
+                        f"(경과 시간: {int(elapsed)}초, HR: {current_hr:.1f}bpm, HRV: {current_hrv:.3f})"
+                    )
+                
+            elif current_stage == "recovery":
+                # 서서히 정상 상태로 회복
+                
+                # 심박수: 90 -> 70
+                current_hr = 90 - recovery_progress * 20 + np.random.normal(0, 2)
+                
+                # HRV: 0.06 -> 0.1
+                current_hrv = 0.06 + recovery_progress * 0.04 + np.random.normal(0, 0.005)
+                
+                # 패턴 변화: 회복 진행에 따라 패턴 전환
+                if recovery_progress < 0.3:
+                    pattern = ECGPatternType.REDUCED_HRV
+                elif recovery_progress < 0.7:
+                    pattern = ECGPatternType.ELEVATED_HR
+                else:
+                    pattern = ECGPatternType.NORMAL
+                
+                # 설정 업데이트
+                self.ecg_simulator.set_pattern(
+                    pattern,
+                    heart_rate=current_hr,
+                    hrv_level=current_hrv
+                )
+                
+                # GUI 업데이트
+                if not self.headless:
+                    self.hr_var.set(int(current_hr))
+                    self.hrv_var.set(current_hrv)
+                    self.pattern_var.set(pattern.value)
+                
+                # 로깅
+                if int(elapsed) % 30 == 0:
+                    self.log_status(
+                        f"회복 중... "
+                        f"(경과 시간: {int(elapsed)}초, HR: {current_hr:.1f}bpm, HRV: {current_hrv:.3f}, 진행: {recovery_progress*100:.0f}%)"
+                    )
+            
+            # 잠시 대기
+            time.sleep(5)
+        
+        self.log_status("불안 발작 후 회복 시나리오가 완료되었습니다.")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Anxiety Prevention Device Simulation')
-    parser.add_argument('--headless', action='store_true', help='Run in headless mode (no GUI)')
+    """
+    시뮬레이션 실행 메인 함수
+    """
+    # 명령행 인수 파싱
+    parser = argparse.ArgumentParser(description='불안장애 예방 시스템 시뮬레이션')
+    parser.add_argument('--headless', action='store_true', help='헤드리스 모드 (GUI 없음)')
+    parser.add_argument('--scenario', type=str, default='normal', 
+                        choices=['normal', 'increasing_anxiety', 'sudden_anxiety', 'recovery_after_anxiety'],
+                        help='실행할 시나리오')
+    parser.add_argument('--duration', type=int, default=300, help='시뮬레이션 지속 시간 (초)')
+    parser.add_argument('--log-level', type=str, default='INFO', 
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                        help='로그 레벨')
     args = parser.parse_args()
     
-    # Check if GUI is available when not in headless mode
-    if not args.headless and not GUI_AVAILABLE:
-        logger.warning("GUI dependencies (PyQt5, pyqtgraph) not available. Running in headless mode.")
-        args.headless = True
+    # 로깅 설정
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     
-    # Create and run the simulation
-    simulation = SimulationController(headless=args.headless)
-    simulation.run()
+    # 헤드리스 모드
+    if args.headless:
+        # GUI 없이 시뮬레이션 실행
+        app = SimulationApp(headless=True)
+        
+        # 시나리오 설정 및 시작
+        app.scenario_var = args.scenario
+        app.start_simulation()
+        
+        try:
+            # 지정된 시간 동안 실행
+            time.sleep(args.duration)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            # 종료
+            app.stop_simulation()
+            
+    else:
+        # GUI 모드
+        root = tk.Tk()
+        app = SimulationApp(root=root)
+        
+        # 종료 시 정리
+        def on_closing():
+            if app.running:
+                app.stop_simulation()
+            root.destroy()
+        
+        root.protocol("WM_DELETE_WINDOW", on_closing)
+        root.mainloop()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
