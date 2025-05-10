@@ -1,39 +1,28 @@
 FROM python:3.9-slim
 
-LABEL maintainer="contact@example.com"
-LABEL description="불안장애 예방장치 시뮬레이션 환경"
-
-# 작업 디렉토리 설정
 WORKDIR /app
 
-# GUI 관련 패키지 설치
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-tk \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libxi6 \
+# 필요한 라이브러리 설치
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libatlas-base-dev \
+    libhdf5-dev \
+    libssl-dev \
+    libx11-6 \
+    libxext6 \
     libxrender1 \
     libxtst6 \
-    && apt-get clean \
+    libfreetype6 \
+    tk \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 종속성 파일 복사 및 설치
-COPY requirements.txt requirements-simulation.txt* ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && if [ -f requirements-simulation.txt ]; then pip install --no-cache-dir -r requirements-simulation.txt; fi
+# Python 의존성 복사 및 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir matplotlib tk
 
 # 소스 코드 복사
 COPY . .
 
-# 필요한 디렉토리 생성
-RUN mkdir -p data/ecg data/hrv data/models results
-
-# 환경 변수 설정
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-ENV QT_X11_NO_MITSHM=1
-ENV DISPLAY=:0
-
-# 시뮬레이션 실행 명령
-ENTRYPOINT ["python", "simulation/run_simulation.py"]
-CMD ["--config", "simulation/simulation_config.json"]
+# 헤드리스 모드로 시뮬레이션 실행
+ENTRYPOINT ["python", "simulation/run_simulation.py", "--headless"]
