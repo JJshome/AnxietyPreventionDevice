@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- 배경 그라데이션 -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e9ecef;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 파형 그라데이션 -->
+    <linearGradient id="waveGradient1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6b6b;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#ff6b6b;stop-opacity:0" />
+    </linearGradient>
+    
+    <linearGradient id="waveGradient2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4dabf7;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#4dabf7;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- 두피 그라데이션 -->
+    <linearGradient id="headGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f1f3f5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#dee2e6;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 클리핑 마스크 -->
+    <clipPath id="brainClip">
+      <ellipse cx="400" cy="200" rx="130" ry="120" />
+    </clipPath>
+    
+    <!-- 두뇌 색상 그라데이션 -->
+    <linearGradient id="brainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffa8a8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff8787;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 자극 라인 그라데이션 -->
+    <linearGradient id="stim1Gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff6b6b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff6b6b;stop-opacity:0.3" />
+    </linearGradient>
+    
+    <linearGradient id="stim2Gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4dabf7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4dabf7;stop-opacity:0.3" />
+    </linearGradient>
+    
+    <!-- 자극 효과 필터 -->
+    <filter id="glow1" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <filter id="glow2" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- 애니메이션 경로 -->
+    <path id="wave1Path" d="M0,50 Q12.5,25 25,50 Q37.5,75 50,50 Q62.5,25 75,50 Q87.5,75 100,50" />
+    <path id="wave2Path" d="M0,50 Q12.5,25 25,50 Q37.5,75 50,50 Q62.5,25 75,50 Q87.5,75 100,50" />
+    
+    <!-- 화살표 -->
+    <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="0" refY="2" orient="auto">
+      <polygon points="0 0, 6 2, 0 4" fill="#495057" />
+    </marker>
+  </defs>
+  
+  <!-- 배경 -->
+  <rect width="800" height="600" fill="url(#bgGradient)" rx="15" ry="15" />
+  
+  <!-- 제목 -->
+  <text x="400" y="50" font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle" fill="#343a40">스테레오 자극 모드</text>
+  <text x="400" y="80" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#495057">저주파 자극기의 위상차 기반 스테레오 자극 효과</text>
+  
+  <!-- 뇌 단면도 -->
+  <g transform="translate(400, 200)">
+    <!-- 두피 -->
+    <ellipse cx="0" cy="0" rx="150" ry="140" fill="url(#headGradient)" stroke="#adb5bd" stroke-width="2" />
+    
+    <!-- 두뇌 -->
+    <ellipse cx="0" cy="0" rx="130" ry="120" fill="url(#brainGradient)" />
+    
+    <!-- 뇌 세부 구조 -->
+    <path d="M-65,0 C-50,-30 -20,-60 0,-60 C20,-60 50,-30 65,0 C50,30 20,60 0,60 C-20,60 -50,30 -65,0 Z" fill="none" stroke="#e03131" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7" />
+    <path d="M0,-60 C10,-60 30,-50 40,-30 C50,-10 50,10 40,30 C30,50 10,60 0,60 C-10,60 -30,50 -40,30 C-50,10 -50,-10 -40,-30 C-30,-50 -10,-60 0,-60 Z" fill="none" stroke="#e03131" stroke-width="1.5" opacity="0.7" />
+    
+    <!-- 자극점 1 -->
+    <circle cx="-60" cy="-20" r="10" fill="#ff6b6b" opacity="0.8">
+      <animate attributeName="r" values="10;12;10" dur="2s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" repeatCount="indefinite" />
+    </circle>
+    
+    <!-- 자극점 2 -->
+    <circle cx="60" cy="-20" r="10" fill="#4dabf7" opacity="0.8">
+      <animate attributeName="r" values="10;12;10" dur="2s" repeatCount="indefinite" begin="1s" />
+      <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" repeatCount="indefinite" begin="1s" />
+    </circle>
+    
+    <!-- 자극 확산 효과 -->
+    <circle cx="-60" cy="-20" r="20" fill="none" stroke="#ff6b6b" stroke-width="2" opacity="0.3">
+      <animate attributeName="r" values="15;40;15" dur="4s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.5;0;0.5" dur="4s" repeatCount="indefinite" />
+    </circle>
+    
+    <circle cx="60" cy="-20" r="20" fill="none" stroke="#4dabf7" stroke-width="2" opacity="0.3">
+      <animate attributeName="r" values="15;40;15" dur="4s" repeatCount="indefinite" begin="1s" />
+      <animate attributeName="opacity" values="0.5;0;0.5" dur="4s" repeatCount="indefinite" begin="1s" />
+    </circle>
+    
+    <!-- 자극 확산 경로 -->
+    <path d="M-60,-20 C-40,-30 -20,-40 0,-40 C20,-40 40,-30 60,-20" fill="none" stroke="#ff6b6b" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.5">
+      <animate attributeName="opacity" values="0.5;0.8;0.5" dur="3s" repeatCount="indefinite" />
+    </path>
+    
+    <path d="M-60,-20 C-40,-10 -20,0 0,0 C20,0 40,-10 60,-20" fill="none" stroke="#ff6b6b" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.3">
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite" />
+    </path>
+    
+    <path d="M-60,-20 C-40,0 -20,10 0,10 C20,10 40,0 60,-20" fill="none" stroke="#ff6b6b" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.2">
+      <animate attributeName="opacity" values="0.2;0.4;0.2" dur="3s" repeatCount="indefinite" />
+    </path>
+    
+    <!-- 반대 방향 자극 확산 경로 -->
+    <path d="M60,-20 C40,-30 20,-40 0,-40 C-20,-40 -40,-30 -60,-20" fill="none" stroke="#4dabf7" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.5">
+      <animate attributeName="opacity" values="0.5;0.8;0.5" dur="3s" repeatCount="indefinite" begin="1s" />
+    </path>
+    
+    <path d="M60,-20 C40,-10 20,0 0,0 C-20,0 -40,-10 -60,-20" fill="none" stroke="#4dabf7" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.3">
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite" begin="1s" />
+    </path>
+    
+    <path d="M60,-20 C40,0 20,10 0,10 C-20,10 -40,0 -60,-20" fill="none" stroke="#4dabf7" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.2">
+      <animate attributeName="opacity" values="0.2;0.4;0.2" dur="3s" repeatCount="indefinite" begin="1s" />
+    </path>
+  </g>
+  
+  <!-- 자극 파형 패널 1 -->
+  <g transform="translate(170, 400)">
+    <rect width="200" height="120" rx="10" ry="10" fill="#fff" stroke="#ced4da" stroke-width="1" />
+    
+    <text x="100" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">자극기 1 파형</text>
+    
+    <!-- 파형 배경 -->
+    <rect x="20" y="40" width="160" height="60" rx="5" ry="5" fill="url(#waveGradient1)" />
+    
+    <!-- 파형 -->
+    <path d="M20,70 L30,70 L30,50 L40,50 L40,70 L50,70 L50,90 L60,90 L60,70 L70,70 L70,50 L80,50 L80,70 L90,70 L90,90 L100,90 L100,70 L110,70 L110,50 L120,50 L120,70 L130,70 L130,90 L140,90 L140,70 L150,70 L150,50 L160,50 L160,70 L170,70 L170,70 L180,70" fill="none" stroke="#ff6b6b" stroke-width="2" filter="url(#glow1)">
+      <animate attributeName="d" values="M20,70 L30,70 L30,50 L40,50 L40,70 L50,70 L50,90 L60,90 L60,70 L70,70 L70,50 L80,50 L80,70 L90,70 L90,90 L100,90 L100,70 L110,70 L110,50 L120,50 L120,70 L130,70 L130,90 L140,90 L140,70 L150,70 L150,50 L160,50 L160,70 L170,70 L170,70 L180,70;
+                                        M20,70 L30,70 L30,45 L40,45 L40,70 L50,70 L50,95 L60,95 L60,70 L70,70 L70,45 L80,45 L80,70 L90,70 L90,95 L100,95 L100,70 L110,70 L110,45 L120,45 L120,70 L130,70 L130,95 L140,95 L140,70 L150,70 L150,45 L160,45 L160,70 L170,70 L170,70 L180,70;
+                                        M20,70 L30,70 L30,50 L40,50 L40,70 L50,70 L50,90 L60,90 L60,70 L70,70 L70,50 L80,50 L80,70 L90,70 L90,90 L100,90 L100,70 L110,70 L110,50 L120,50 L120,70 L130,70 L130,90 L140,90 L140,70 L150,70 L150,50 L160,50 L160,70 L170,70 L170,70 L180,70" 
+                             dur="2s" repeatCount="indefinite" />
+    </path>
+    
+    <!-- 타이머 표시 -->
+    <circle cx="30" cy="110" r="3" fill="#ff6b6b">
+      <animate attributeName="fill" values="#ff6b6b;#adb5bd;#ff6b6b" dur="2s" repeatCount="indefinite" />
+    </circle>
+    <text x="40" y="114" font-family="Arial, sans-serif" font-size="10" fill="#495057">t = 0</text>
+  </g>
+  
+  <!-- 자극 파형 패널 2 -->
+  <g transform="translate(430, 400)">
+    <rect width="200" height="120" rx="10" ry="10" fill="#fff" stroke="#ced4da" stroke-width="1" />
+    
+    <text x="100" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#495057">자극기 2 파형</text>
+    
+    <!-- 파형 배경 -->
+    <rect x="20" y="40" width="160" height="60" rx="5" ry="5" fill="url(#waveGradient2)" />
+    
+    <!-- 파형 -->
+    <path d="M20,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L40,70 L40,50 L50,50 L50,70 L60,70 L60,90 L70,90 L70,70 L80,70 L80,50 L90,50 L90,70 L100,70 L100,90 L110,90 L110,70 L120,70 L120,50 L130,50 L130,70 L140,70 L140,90 L150,90 L150,70 L160,70 L160,50 L170,50 L170,70 L180,70" fill="none" stroke="#4dabf7" stroke-width="2" filter="url(#glow2)">
+      <animate attributeName="d" values="M20,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L40,70 L40,50 L50,50 L50,70 L60,70 L60,90 L70,90 L70,70 L80,70 L80,50 L90,50 L90,70 L100,70 L100,90 L110,90 L110,70 L120,70 L120,50 L130,50 L130,70 L140,70 L140,90 L150,90 L150,70 L160,70 L160,50 L170,50 L170,70 L180,70;
+                                        M20,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L40,70 L40,45 L50,45 L50,70 L60,70 L60,95 L70,95 L70,70 L80,70 L80,45 L90,45 L90,70 L100,70 L100,95 L110,95 L110,70 L120,70 L120,45 L130,45 L130,70 L140,70 L140,95 L150,95 L150,70 L160,70 L160,45 L170,45 L170,70 L180,70;
+                                        M20,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L30,70 L40,70 L40,50 L50,50 L50,70 L60,70 L60,90 L70,90 L70,70 L80,70 L80,50 L90,50 L90,70 L100,70 L100,90 L110,90 L110,70 L120,70 L120,50 L130,50 L130,70 L140,70 L140,90 L150,90 L150,70 L160,70 L160,50 L170,50 L170,70 L180,70" 
+                             dur="2s" repeatCount="indefinite" begin="1s" />
+    </path>
+    
+    <!-- 타이머 표시 -->
+    <circle cx="30" cy="110" r="3" fill="#adb5bd">
+      <animate attributeName="fill" values="#adb5bd;#4dabf7;#adb5bd" dur="2s" repeatCount="indefinite" begin="1s" />
+    </circle>
+    <text x="40" y="114" font-family="Arial, sans-serif" font-size="10" fill="#495057">t = 0.5s</text>
+  </g>
+  
+  <!-- 위상차 설명 -->
+  <g transform="translate(400, 550)">
+    <line x1="-150" y1="0" x2="150" y2="0" stroke="#adb5bd" stroke-width="1" />
+    
+    <line x1="-150" y1="0" x2="-150" y2="-5" stroke="#adb5bd" stroke-width="1" />
+    <text x="-150" y="-10" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#495057">0s</text>
+    
+    <line x1="-75" y1="0" x2="-75" y2="-5" stroke="#adb5bd" stroke-width="1" />
+    <text x="-75" y="-10" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#495057">0.25s</text>
+    
+    <line x1="0" y1="0" x2="0" y2="-5" stroke="#adb5bd" stroke-width="1" />
+    <text x="0" y="-10" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#495057">0.5s</text>
+    
+    <line x1="75" y1="0" x2="75" y2="-5" stroke="#adb5bd" stroke-width="1" />
+    <text x="75" y="-10" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#495057">0.75s</text>
+    
+    <line x1="150" y1="0" x2="150" y2="-5" stroke="#adb5bd" stroke-width="1" />
+    <text x="150" y="-10" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#495057">1.0s</text>
+    
+    <!-- 위상차 -->
+    <g>
+      <path d="M-150,-25 L-145,-25 L-145,-40 L-135,-40 L-135,-25 L-130,-25 L-130,-10 L-120,-10 L-120,-25 L-115,-25" fill="none" stroke="#ff6b6b" stroke-width="2" opacity="0.8" />
+      
+      <path d="M0,-25 L5,-25 L5,-40 L15,-40 L15,-25 L20,-25 L20,-10 L30,-10 L30,-25 L35,-25" fill="none" stroke="#4dabf7" stroke-width="2" opacity="0.8" />
+      
+      <line x1="-131" y1="-30" x2="14" y2="-30" stroke="#495057" stroke-width="1" stroke-dasharray="2,2" />
+      <line x1="-131" y1="-30" x2="-131" y2="-50" stroke="#495057" stroke-width="1" stroke-dasharray="2,2" />
+      <line x1="14" y1="-30" x2="14" y2="-50" stroke="#495057" stroke-width="1" stroke-dasharray="2,2" />
+      
+      <text x="-59" y="-40" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#495057">0.5초 위상차</text>
+      
+      <!-- 애니메이션 포인터 -->
+      <circle cx="-145" cy="-60" r="3" fill="#ff6b6b">
+        <animate attributeName="cx" values="-145;35;-145" dur="4s" repeatCount="indefinite" />
+        <animate attributeName="fill" values="#ff6b6b;#4dabf7;#ff6b6b" dur="4s" repeatCount="indefinite" />
+      </circle>
+    </g>
+  </g>
+  
+  <!-- 정보 박스 -->
+  <g transform="translate(80, 180)">
+    <rect width="180" height="160" rx="10" ry="10" fill="#fff" opacity="0.9" stroke="#ced4da" stroke-width="1" />
+    
+    <text x="20" y="30" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#343a40">스테레오 자극 효과</text>
+    
+    <line x1="20" y1="40" x2="160" y2="40" stroke="#ced4da" stroke-width="1" />
+    
+    <text x="15" y="60" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 두 자극기의 위상차 조절</text>
+    <text x="15" y="85" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 0.1초~1초 범위 조절 가능</text>
+    <text x="15" y="110" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 서로 다른 뇌 영역 자극</text>
+    <text x="15" y="135" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 향상된 불안 완화 효과</text>
+  </g>
+  
+  <g transform="translate(660, 170)">
+    <rect width="180" height="180" rx="10" ry="10" fill="#fff" opacity="0.9" stroke="#ced4da" stroke-width="1" />
+    
+    <text x="20" y="30" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#343a40">특허 기술 요약</text>
+    
+    <line x1="20" y1="40" x2="160" y2="40" stroke="#ced4da" stroke-width="1" />
+    
+    <text x="15" y="60" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 특허번호: 10-2459338</text>
+    <text x="15" y="85" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 저주파 자극기 제어장치</text>
+    <text x="15" y="110" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 블루투스 무선 연결</text>
+    <text x="15" y="135" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 위상차 제어 딜레이 조절</text>
+    <text x="15" y="160" font-family="Arial, sans-serif" font-size="12" fill="#495057">• 자극 강도 밸런스 조절</text>
+  </g>
+  
+  <!-- 배경 애니메이션 효과 -->
+  <g opacity="0.1">
+    <circle cx="200" cy="100" r="40" fill="none" stroke="#ff6b6b" stroke-width="1">
+      <animate attributeName="r" values="40;60;40" dur="8s" repeatCount="indefinite" />
+    </circle>
+    
+    <circle cx="600" cy="100" r="40" fill="none" stroke="#4dabf7" stroke-width="1">
+      <animate attributeName="r" values="40;60;40" dur="8s" repeatCount="indefinite" begin="4s" />
+    </circle>
+    
+    <circle cx="150" cy="300" r="30" fill="none" stroke="#4dabf7" stroke-width="1">
+      <animate attributeName="r" values="30;45;30" dur="7s" repeatCount="indefinite" begin="2s" />
+    </circle>
+    
+    <circle cx="650" cy="300" r="30" fill="none" stroke="#ff6b6b" stroke-width="1">
+      <animate attributeName="r" values="30;45;30" dur="7s" repeatCount="indefinite" begin="6s" />
+    </circle>
+  </g>
+</svg>
